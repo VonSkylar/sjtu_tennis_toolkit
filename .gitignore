@@ -4,4 +4,4 @@ browser_profile/
 .vscode/
 .idea/
 *.log
-adb_screen.png
+.workbuddy/

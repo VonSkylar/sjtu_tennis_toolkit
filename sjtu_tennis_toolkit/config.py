@@ -39,13 +39,21 @@ MAX_RUSH_TIME_SLOTS = 7
 ALL_TENNIS_COURTS = tuple(range(1, 9))
 HUXIAOMING_OUTDOOR_COURTS = (1, 2, 3, 4, 5, 8)
 HUXIAOMING_INDOOR_COURTS = (6, 7)
+DEFAULT_RUSH_VENUE_KEY = "huxiaoming"
+DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE = HUXIAOMING_COURT_SCOPE_INDOOR
+DEFAULT_RUSH_PREFERRED_COURT = HUXIAOMING_INDOOR_COURTS[0]
+DEFAULT_RUSH_TIME_RANGES = (
+    "19:00-20:00",
+    "20:00-21:00",
+    "21:00-22:00",
+    "18:00-19:00",
+)
 
 
 # ---------------------------------------------------------------------------
 # Rate-limit cooldown files (relative to project root / CWD)
 # ---------------------------------------------------------------------------
 RATE_LIMIT_COOLDOWN_FILE = Path("rate_limit_until.txt")
-PC_RATE_LIMIT_COOLDOWN_FILE = Path("pc_rate_limit_until.txt")
 RUSH_TARGET_DAYS_AHEAD = 7
 DEFAULT_RUSH_RELEASE_TIME = dt.time(hour=12)
 RUSH_ATTEMPT_WINDOW = dt.timedelta(minutes=1)
@@ -448,34 +456,6 @@ def load_rate_limit_cooldown() -> dt.datetime | None:
     if dt.datetime.now() >= until:
         try:
             RATE_LIMIT_COOLDOWN_FILE.unlink()
-        except OSError:
-            pass
-        return None
-    return until
-
-
-# ---------------------------------------------------------------------------
-# Rate-limit cooldown – PC / ADB version
-# ---------------------------------------------------------------------------
-def next_pc_rate_limit_retry_time() -> dt.datetime:
-    tomorrow = dt.date.today() + dt.timedelta(days=1)
-    return dt.datetime.combine(tomorrow, dt.time(hour=0, minute=10))
-
-
-def save_pc_rate_limit_cooldown(until: dt.datetime) -> None:
-    PC_RATE_LIMIT_COOLDOWN_FILE.write_text(until.isoformat(timespec="minutes"), encoding="utf-8")
-
-
-def load_pc_rate_limit_cooldown() -> dt.datetime | None:
-    if not PC_RATE_LIMIT_COOLDOWN_FILE.exists():
-        return None
-    try:
-        until = dt.datetime.fromisoformat(PC_RATE_LIMIT_COOLDOWN_FILE.read_text(encoding="utf-8").strip())
-    except ValueError:
-        return None
-    if dt.datetime.now() >= until:
-        try:
-            PC_RATE_LIMIT_COOLDOWN_FILE.unlink()
         except OSError:
             pass
         return None

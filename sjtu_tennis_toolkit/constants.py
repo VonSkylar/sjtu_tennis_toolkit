@@ -25,11 +25,3 @@ EIGHTH_DAY_RELEASE_HOUR = 12
 # ---------------------------------------------------------------------------
 USER_DATA_DIR = "browser_profile"
 DEBUG_PAGE_LIST_SECONDS = 60
-
-# ---------------------------------------------------------------------------
-# PC / ADB version
-# ---------------------------------------------------------------------------
-PC_SHORTCUT_NAME = "交我办.lnk"
-ANDROID_PACKAGE = "edu.sjtu.infoplus.taskcenter"
-DATE_CARD_RATIOS = (0.122, 0.351, 0.586, 0.815)
-DATE_CARD_Y_RATIO = 0.698

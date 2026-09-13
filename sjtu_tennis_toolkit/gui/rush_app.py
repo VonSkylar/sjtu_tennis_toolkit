@@ -10,6 +10,11 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from sjtu_tennis_toolkit.browser.rusher import RushBooker
 from sjtu_tennis_toolkit.config import (
+    DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE,
+    DEFAULT_RUSH_PREFERRED_COURT,
+    DEFAULT_RUSH_TIME_RANGES,
+    DEFAULT_RUSH_VENUE_KEY,
+    HUXIAOMING_COURT_SCOPE_LABELS,
     HUXIAOMING_COURT_SCOPE_OPTIONS,
     MAX_RUSH_TIME_SLOTS,
     is_rush_start_allowed,
@@ -22,7 +27,7 @@ from sjtu_tennis_toolkit.config import (
     rush_target_date,
     rush_time_options,
 )
-from sjtu_tennis_toolkit.models import RushConfig, Slot, VENUES
+from sjtu_tennis_toolkit.models import RushConfig, Slot, VENUES, VENUES_BY_KEY
 
 
 RUSH_TIME_LABELS = (
@@ -51,11 +56,16 @@ class RushApp(tk.Tk):
 
         self.date_var = tk.StringVar(value=rush_target_date().isoformat())
         self.time_options = rush_time_options()
-        self.time_vars = [tk.StringVar(value="21:00-22:00")]
+        self.time_vars = [
+            tk.StringVar(value=time_range)
+            for time_range in DEFAULT_RUSH_TIME_RANGES
+        ]
         self.time_combos: list[ttk.Combobox] = []
-        self.venue_var = tk.StringVar(value=VENUES[0].name)
-        self.huxiaoming_scope_var = tk.StringVar(value="全部都要")
-        self.court_var = tk.StringVar(value="1")
+        self.venue_var = tk.StringVar(value=VENUES_BY_KEY[DEFAULT_RUSH_VENUE_KEY].name)
+        self.huxiaoming_scope_var = tk.StringVar(
+            value=HUXIAOMING_COURT_SCOPE_LABELS[DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE]
+        )
+        self.court_var = tk.StringVar(value=str(DEFAULT_RUSH_PREFERRED_COURT))
         self.release_time_var = tk.StringVar(value="12:00:00")
         self.status_var = tk.StringVar(value="未开始")
 
@@ -163,7 +173,8 @@ class RushApp(tk.Tk):
         self.log.pack(fill=tk.BOTH, expand=True)
 
         self._append_log(
-            "默认只有第一时间，可依次新增到第七时间，并从末尾删除。程序按时间序号依次尝试；"
+            "默认使用胡晓明网球场室内场，并按第一至第四时间依次尝试；"
+            "可继续新增到第七时间，并从末尾删除。"
             "胡晓明网球场可限定室外场（1-5、8）、室内场（6、7）或全部场地。"
         )
 

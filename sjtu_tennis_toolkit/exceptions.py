@@ -11,13 +11,3 @@ class BookingPageNotReady(RuntimeError):
 class RequestRateLimited(RuntimeError):
     """Raised when the school system reports daily request limit exceeded."""
     pass
-
-
-class PCAppNotReady(RuntimeError):
-    """Raised when the PC/ADB automation cannot reach the app."""
-    pass
-
-
-class PCRateLimited(RuntimeError):
-    """Raised when the PC version detects the daily request limit."""
-    pass
