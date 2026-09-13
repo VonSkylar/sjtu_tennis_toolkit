@@ -10,10 +10,6 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from sjtu_tennis_toolkit.browser.rusher import RushBooker
 from sjtu_tennis_toolkit.config import (
-    DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE,
-    DEFAULT_RUSH_PREFERRED_COURT,
-    DEFAULT_RUSH_TIME_RANGES,
-    DEFAULT_RUSH_VENUE_KEY,
     HUXIAOMING_COURT_SCOPE_LABELS,
     HUXIAOMING_COURT_SCOPE_OPTIONS,
     MAX_RUSH_TIME_SLOTS,
@@ -28,6 +24,13 @@ from sjtu_tennis_toolkit.config import (
     rush_time_options,
 )
 from sjtu_tennis_toolkit.models import RushConfig, Slot, VENUES, VENUES_BY_KEY
+from sjtu_tennis_toolkit.rush_state import (
+    RushUiState,
+    describe_rush_ui_state,
+    load_rush_ui_state,
+    normalize_rush_ui_state,
+    save_rush_ui_state,
+)
 
 
 RUSH_TIME_LABELS = (
@@ -53,29 +56,34 @@ class RushApp(tk.Tk):
         self.booker_thread: threading.Thread | None = None
         self.ordered = False
         self.inputs_enabled = True
+        self._drain_job: str | None = None
 
+        state = load_rush_ui_state()
+
+        # The date is always derived from today; it is never restored or edited.
         self.date_var = tk.StringVar(value=rush_target_date().isoformat())
         self.time_options = rush_time_options()
         self.time_vars = [
             tk.StringVar(value=time_range)
-            for time_range in DEFAULT_RUSH_TIME_RANGES
+            for time_range in state.time_range_texts
         ]
         self.time_combos: list[ttk.Combobox] = []
-        self.venue_var = tk.StringVar(value=VENUES_BY_KEY[DEFAULT_RUSH_VENUE_KEY].name)
+        self.venue_var = tk.StringVar(value=VENUES_BY_KEY[state.venue_key].name)
         self.huxiaoming_scope_var = tk.StringVar(
-            value=HUXIAOMING_COURT_SCOPE_LABELS[DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE]
+            value=HUXIAOMING_COURT_SCOPE_LABELS[state.huxiaoming_court_scope]
         )
-        self.court_var = tk.StringVar(value=str(DEFAULT_RUSH_PREFERRED_COURT))
-        self.release_time_var = tk.StringVar(value="12:00:00")
+        self.court_var = tk.StringVar(value=str(state.court))
+        self.release_time_var = tk.StringVar(value=state.release_time_text)
         self.status_var = tk.StringVar(value="未开始")
 
-        self._build_ui()
+        self._build_ui(state)
         self.venue_var.trace_add("write", self._update_venue_controls)
         self.huxiaoming_scope_var.trace_add("write", self._update_venue_controls)
         self._update_venue_controls()
-        self.after(200, self._drain_events)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self._drain_job = self.after(200, self._drain_events)
 
-    def _build_ui(self) -> None:
+    def _build_ui(self, state: RushUiState) -> None:
         root = ttk.Frame(self, padding=16)
         root.pack(fill=tk.BOTH, expand=True)
 
@@ -165,6 +173,12 @@ class RushApp(tk.Tk):
         self.start_button.pack(side=tk.LEFT)
         self.stop_button = ttk.Button(buttons, text="停止抢场", command=self.stop_rush, state=tk.DISABLED)
         self.stop_button.pack(side=tk.LEFT, padx=8)
+        self.reset_button = ttk.Button(
+            buttons,
+            text="恢复默认",
+            command=self.reset_to_defaults,
+        )
+        self.reset_button.pack(side=tk.RIGHT)
 
         status = ttk.Label(root, textvariable=self.status_var)
         status.pack(fill=tk.X, pady=(0, 8))
@@ -173,9 +187,14 @@ class RushApp(tk.Tk):
         self.log.pack(fill=tk.BOTH, expand=True)
 
         self._append_log(
+            f"已载入上次设置：{describe_rush_ui_state(state)}；"
+            "日期始终按当天自动计算。"
+        )
+        self._append_log(
             "默认使用胡晓明网球场室内场，并按第一至第四时间依次尝试；"
             "可继续新增到第七时间，并从末尾删除。"
             "胡晓明网球场可限定室外场（1-5、8）、室内场（6、7）或全部场地。"
+            "关闭窗口时会记住当前设置，点“恢复默认”可回到初始值。"
         )
 
     def start_rush(self) -> None:
@@ -241,6 +260,41 @@ class RushApp(tk.Tk):
         self.stop_button.configure(state=tk.DISABLED)
         self.status_var.set("正在停止")
 
+    def reset_to_defaults(self) -> None:
+        """Restore the shipped defaults in the form (the date stays automatic)."""
+        if not self.inputs_enabled:
+            return
+        default_state = normalize_rush_ui_state()
+        self._apply_ui_state(default_state)
+        self._append_log(f"已恢复默认设置：{describe_rush_ui_state(default_state)}")
+
+    def _apply_ui_state(self, state: RushUiState) -> None:
+        # Order matters: the venue/scope traces rewrite the court combo, so the
+        # court is set last to survive them.
+        self.venue_var.set(VENUES_BY_KEY[state.venue_key].name)
+        self.huxiaoming_scope_var.set(
+            HUXIAOMING_COURT_SCOPE_LABELS[state.huxiaoming_court_scope]
+        )
+        self.court_var.set(str(state.court))
+        self.release_time_var.set(state.release_time_text)
+        self.time_vars = [
+            tk.StringVar(value=text) for text in state.time_range_texts
+        ]
+        self._render_time_rows()
+
+    def _save_ui_state(self) -> None:
+        try:
+            save_rush_ui_state(
+                self._venue_key_from_name(self.venue_var.get()),
+                self.huxiaoming_scope_var.get(),
+                self.court_var.get(),
+                self.release_time_var.get(),
+                tuple(variable.get() for variable in self.time_vars),
+            )
+        except (ValueError, tk.TclError):
+            # Never block closing the window because the form looked odd.
+            pass
+
     def _drain_events(self) -> None:
         while True:
             try:
@@ -268,7 +322,7 @@ class RushApp(tk.Tk):
                 else:
                     self._reset_controls("已下单")
 
-        self.after(200, self._drain_events)
+        self._drain_job = self.after(200, self._drain_events)
 
     def _handle_ordered(self, slot: Slot) -> None:
         self.ordered = True
@@ -294,6 +348,7 @@ class RushApp(tk.Tk):
         for combo in self.time_combos:
             combo.configure(state=combo_state)
         self.release_time_entry.configure(state=tk.NORMAL if enabled else tk.DISABLED)
+        self.reset_button.configure(state=tk.NORMAL if enabled else tk.DISABLED)
         self._update_venue_controls()
         self._update_time_button_states()
 
@@ -376,8 +431,15 @@ class RushApp(tk.Tk):
         raise ValueError(f"未知场馆：{venue_name}")
 
     def destroy(self) -> None:
+        if self._drain_job is not None:
+            try:
+                self.after_cancel(self._drain_job)
+            except tk.TclError:
+                pass
+            self._drain_job = None
         if self.booker:
             self.booker.stop()
+        self._save_ui_state()
         super().destroy()
 
 

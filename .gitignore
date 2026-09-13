@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 browser_profile/
+rush_state.json
 .vscode/
 .idea/
 *.log
