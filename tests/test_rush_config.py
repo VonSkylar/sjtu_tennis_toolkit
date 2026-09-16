@@ -12,26 +12,26 @@ from sjtu_tennis_toolkit.config import (
     HUXIAOMING_COURT_SCOPE_INDOOR,
     HUXIAOMING_COURT_SCOPE_OUTDOOR,
     MAX_RUSH_TIME_SLOTS,
-    court_attempt_order,
     is_rush_start_allowed,
     parse_rush_config,
     parse_rush_start_time,
     parse_rush_time_slots,
     rush_allowed_courts,
-    rush_attempt_plan,
     rush_court_attempt_order,
     rush_deadline_datetime,
     rush_release_datetime,
     rush_target_date,
     rush_time_options,
 )
+from sjtu_tennis_toolkit.browser.booking_actions import (
+    point_inside_viewport,
+    slot_cell_can_submit,
+    slot_cell_needs_click,
+)
 from sjtu_tennis_toolkit.browser.rusher import (
     RushBooker,
     date_bar_action,
     date_bar_ready,
-    point_inside_viewport,
-    slot_cell_can_submit,
-    slot_cell_needs_click,
 )
 from sjtu_tennis_toolkit.models import Slot
 
@@ -80,9 +80,6 @@ class RushConfigTest(unittest.TestCase):
         self.assertEqual(options[0], "07:00-08:00")
         self.assertEqual(options[-1], "21:00-22:00")
         self.assertEqual(len(options), 15)
-
-    def test_court_attempt_order_uses_preferred_then_ascending(self) -> None:
-        self.assertEqual(court_attempt_order(3), (3, 1, 2, 4, 5, 6, 7, 8))
 
     def test_dynamic_time_slots_preserve_added_order(self) -> None:
         slots = parse_rush_time_slots(
@@ -213,24 +210,6 @@ class RushConfigTest(unittest.TestCase):
         self.assertEqual(config.release_time, dt.time(12, 0, 2))
         self.assertEqual(config.huxiaoming_court_scope, HUXIAOMING_COURT_SCOPE_OUTDOOR)
 
-    def test_attempt_plan_is_time_first_then_court(self) -> None:
-        config = parse_rush_config(
-            "19:00-20:00",
-            "huxiaoming",
-            "3",
-            dt.datetime(2026, 6, 6, 10, 0),
-            second_time_range_text="20:00-21:00",
-            huxiaoming_court_scope="只要室外场",
-        )
-        plan = rush_attempt_plan(config)
-        self.assertEqual(
-            tuple((slot.start_hour, court) for slot, court in plan),
-            (
-                (19, 3), (19, 1), (19, 2), (19, 4), (19, 5), (19, 8),
-                (20, 3), (20, 1), (20, 2), (20, 4), (20, 5), (20, 8),
-            ),
-        )
-
     def test_success_stops_before_later_time_slots(self) -> None:
         config = parse_rush_config(
             "19:00-20:00",
@@ -244,7 +223,6 @@ class RushConfigTest(unittest.TestCase):
             config.target_date,
             "场地1",
             "19:00",
-            "场地1-19:00",
         )
         booker = RushBooker(lambda: config, queue.Queue())
         booker._wait_for_target_grid_ready = Mock(return_value=True)
@@ -272,7 +250,6 @@ class RushConfigTest(unittest.TestCase):
             config.target_date,
             "场地2",
             "20:00",
-            "场地2-20:00",
         )
         booker = RushBooker(lambda: config, queue.Queue())
         booker._wait_for_target_grid_ready = Mock(return_value=True)

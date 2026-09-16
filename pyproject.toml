@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sjtu-tennis-toolkit"
-version = "1.0.0"
+dynamic = ["version"]
 description = "交我办网球场监控与抢场工具集 — SJTU Tennis Toolkit"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,10 @@ dependencies = [
 
 [project.scripts]
 sjtu-tennis = "sjtu_tennis_toolkit.__main__:main"
+
+[tool.setuptools.dynamic]
+# 版本号单一来源：sjtu_tennis_toolkit/__init__.py 的 __version__
+version = {attr = "sjtu_tennis_toolkit.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["sjtu_tennis_toolkit*"]

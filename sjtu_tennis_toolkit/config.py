@@ -12,6 +12,7 @@ from sjtu_tennis_toolkit.constants import (
     EIGHTH_DAY_RELEASE_HOUR,
     MIN_CHECK_INTERVAL_SECONDS,
     OPEN_HOUR,
+    TENNIS_COURT_COUNT,
 )
 from sjtu_tennis_toolkit.models import (
     MonitorConfig,
@@ -36,7 +37,7 @@ HUXIAOMING_COURT_SCOPE_LABELS = {
 HUXIAOMING_COURT_SCOPE_OPTIONS = tuple(HUXIAOMING_COURT_SCOPE_LABELS.values())
 RUSH_TIME_NOT_SELECTED = "不选择"
 MAX_RUSH_TIME_SLOTS = 7
-ALL_TENNIS_COURTS = tuple(range(1, 9))
+ALL_TENNIS_COURTS = tuple(range(1, TENNIS_COURT_COUNT + 1))
 HUXIAOMING_OUTDOOR_COURTS = (1, 2, 3, 4, 5, 8)
 HUXIAOMING_INDOOR_COURTS = (6, 7)
 DEFAULT_RUSH_VENUE_KEY = "huxiaoming"
@@ -282,7 +283,7 @@ def parse_rush_time_slots(
         for slot in time_slots
     )
     if len(normalized_slots) != len(set(normalized_slots)):
-        raise ValueError("第一、第二、第三时间不能重复")
+        raise ValueError("时间段不能重复")
     return time_slots
 
 
@@ -370,20 +371,6 @@ def rush_court_attempt_order(
     if preferred_court not in normalized:
         raise ValueError("首选场地号不在允许的场地范围内")
     return (preferred_court, *(court for court in normalized if court != preferred_court))
-
-
-def court_attempt_order(preferred_court: int) -> tuple[int, ...]:
-    return rush_court_attempt_order(preferred_court, ALL_TENNIS_COURTS)
-
-
-def rush_attempt_plan(config: RushConfig) -> tuple[tuple[RushTimeSlot, int], ...]:
-    allowed_courts = rush_allowed_courts(config.venue.key, config.huxiaoming_court_scope)
-    courts = rush_court_attempt_order(config.preferred_court, allowed_courts)
-    return tuple(
-        (time_slot, court)
-        for time_slot in config.time_slots
-        for court in courts
-    )
 
 
 def rush_release_datetime(

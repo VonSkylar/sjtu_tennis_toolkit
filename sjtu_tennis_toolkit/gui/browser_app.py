@@ -33,6 +33,8 @@ class App(tk.Tk):
         self.alert_popup_open = False
         self.alert_window: tk.Toplevel | None = None
         self.config_change_after_id: str | None = None
+        self._drain_job: str | None = None
+        self._alert_job: str | None = None
 
         self.date_var = tk.StringVar(value=default_date_range_text())
         self.start_var = tk.StringVar(value="17:00")
@@ -59,7 +61,8 @@ class App(tk.Tk):
         self._build_ui()
         self.venue_vars["huxiaoming"].trace_add("write", self._update_huxiaoming_scope_state)
         self._update_huxiaoming_scope_state()
-        self.after(200, self._drain_events)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self._drain_job = self.after(200, self._drain_events)
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=16)
@@ -205,6 +208,7 @@ class App(tk.Tk):
         self.status_var.set("正在停止")
 
     def stop_alarm(self) -> None:
+        self._cancel_job("_alert_job")
         self.alarm.stop()
         self.stop_alarm_button.configure(state=tk.DISABLED)
         self.alert_popup_open = False
@@ -229,25 +233,44 @@ class App(tk.Tk):
                 self._reset_controls()
             elif kind == "available":
                 self._handle_available(payload)
+            elif kind == "ordered":
+                self._handle_auto_ordered(payload)
             elif kind == "stopped":
                 self._append_log(str(payload))
                 self._reset_controls()
 
-        self.after(200, self._drain_events)
+        self._drain_job = self.after(200, self._drain_events)
 
     def _handle_available(self, slots: list[Slot]) -> None:
         lines = [f"{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}" for slot in slots]
         message = "发现可预约网球场：\n" + "\n".join(lines)
         self.status_var.set("发现空场")
         self._append_log(message)
-        self.alarm.start()
+        try:
+            self.alarm.start()
+        except Exception as exc:
+            # Sound is the only channel that reaches a user who walked away, so a
+            # failure here must never take the event pump down with it.
+            self._append_log(f"报警声音启动失败：{exc}")
+            self._ring_fallback_bell()
         self.stop_alarm_button.configure(state=tk.NORMAL)
 
         if not self.alert_popup_open:
             self.alert_popup_open = True
-            self.after(0, lambda: self._show_availability_alert(message))
+            self._alert_job = self.after(0, lambda: self._show_availability_alert(message))
+
+    def _ring_fallback_bell(self) -> None:
+        try:
+            self.bell()
+        except Exception as exc:
+            self._append_log(f"备用提示音也未能播放：{exc}")
+
+    def _handle_auto_ordered(self, slot: Slot) -> None:
+        self.status_var.set("已自动下单")
+        self._append_log(f"已自动下单：{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}")
 
     def _show_availability_alert(self, message: str) -> None:
+        self._alert_job = None
         if self.alert_window and self.alert_window.winfo_exists():
             self.alert_window.lift()
             self.alert_window.focus_force()
@@ -280,7 +303,7 @@ class App(tk.Tk):
         self.stop_button.configure(state=tk.DISABLED)
         self.monitor = None
         self.monitor_thread = None
-        if self.status_var.get() != "发现空场":
+        if self.status_var.get() not in {"发现空场", "已自动下单"}:
             self.status_var.set("未开始")
 
     def _append_log(self, message: str) -> None:
@@ -290,7 +313,23 @@ class App(tk.Tk):
         self.log.see(tk.END)
         self.log.configure(state=tk.DISABLED)
 
+    def _cancel_job(self, attribute: str) -> None:
+        job = getattr(self, attribute, None)
+        if not job:
+            return
+        try:
+            self.after_cancel(job)
+        except tk.TclError:
+            pass
+        setattr(self, attribute, None)
+
+    def _cancel_after_jobs(self) -> None:
+        """Drop every pending callback so nothing fires into a destroyed widget."""
+        for attribute in ("_drain_job", "_alert_job", "config_change_after_id"):
+            self._cancel_job(attribute)
+
     def destroy(self) -> None:
+        self._cancel_after_jobs()
         self.stop_monitoring()
         super().destroy()
 

@@ -2,7 +2,12 @@ __pycache__/
 *.pyc
 browser_profile/
 rush_state.json
+rate_limit_until.txt
 .vscode/
 .idea/
 *.log
 .workbuddy/
+build/
+dist/
+*.egg-info/
+.pytest_cache/

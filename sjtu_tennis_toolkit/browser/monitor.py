@@ -8,7 +8,14 @@ import re
 import threading
 import time
 
+from sjtu_tennis_toolkit.browser.booking_actions import (
+    BookingPageActions,
+    slot_cell_can_submit,
+    slot_cell_needs_click,
+)
+from sjtu_tennis_toolkit.browser.js_snippets import grid_arguments, grid_probe
 from sjtu_tennis_toolkit.constants import (
+    AUTO_ORDER_RETRY_COOLDOWN_SECONDS,
     DEFAULT_CHECK_INTERVAL_SECONDS,
     DEBUG_PAGE_LIST_SECONDS,
     SETUP_SCAN_SECONDS,
@@ -22,11 +29,12 @@ from sjtu_tennis_toolkit.config import (
     target_date_labels,
 )
 from sjtu_tennis_toolkit.exceptions import BookingPageNotReady, RequestRateLimited
-from sjtu_tennis_toolkit.models import MonitorConfig, Slot, Venue, VENUES, VENUES_BY_KEY
+from sjtu_tennis_toolkit.models import MonitorConfig, Slot, Venue, VENUES_BY_KEY
 
 
-class VenueMonitor:
+class VenueMonitor(BookingPageActions):
     def __init__(self, config_provider, events: queue.Queue) -> None:
+        super().__init__()
         self.config_provider = config_provider
         self.events = events
         self.stop_event = threading.Event()
@@ -36,6 +44,8 @@ class VenueMonitor:
         self._last_config: MonitorConfig | None = None
         self._next_date_index_by_venue: dict[str, int] = {}
         self._pages_by_venue: dict[str, object] = {}
+        self._auto_order_halted = False
+        self._auto_order_last_attempt_at: dict[str, float] = {}
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -223,200 +233,114 @@ class VenueMonitor:
     def _maybe_auto_order_unique_slot(self, config: MonitorConfig, slots: list[Slot]) -> None:
         if not config.auto_order_enabled:
             return
+        if self._auto_order_halted:
+            return
         if len(slots) != 1:
             self.events.put(("log", f"本轮发现 {len(slots)} 个符合条件的空场，按设置不自动下单，只报警。"))
             return
 
         slot = slots[0]
-
-        try:
-            self._auto_order_slot(slot)
-        except Exception as exc:
-            self.events.put(("log", f"自动下单未完成：{exc}"))
+        slot_key = self._slot_key(slot)
+        attempted_at = self._auto_order_last_attempt_at.get(slot_key)
+        if attempted_at is not None and time.monotonic() - attempted_at < AUTO_ORDER_RETRY_COOLDOWN_SECONDS:
+            # The grid often lags behind a rejected submit; without this guard the
+            # same cell is re-detected as "the only free slot" every round.
             return
 
-        self.events.put(("log", f"已自动提交订单：{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}"))
+        self._auto_order_last_attempt_at[slot_key] = time.monotonic()
+        try:
+            result_kind, result_text = self._auto_order_slot(slot)
+        except Exception as exc:
+            self.events.put(("log", f"自动下单未完成，本轮不计入成功：{exc}"))
+            return
 
-    def _auto_order_slot(self, slot: Slot) -> None:
+        if result_kind == "success":
+            self._halt_auto_order("已经自动下单成功")
+            self.events.put(("log", f"已确认自动下单成功：{self._slot_text(slot)}（{result_text}）"))
+            self.events.put(("ordered", slot))
+            return
+
+        if result_kind == "failure":
+            self.events.put(
+                ("log", f"自动下单失败：{result_text}（{self._slot_text(slot)}）；"
+                f"{AUTO_ORDER_RETRY_COOLDOWN_SECONDS} 秒内不再重试该格子。")
+            )
+            return
+
+        self._halt_auto_order("提交结果不明确")
+        self.events.put(
+            ("log",
+             f"自动下单提交后没有看到明确成功或失败提示：{result_text}。"
+             "为避免重复下单，已停止后续自动下单，请到浏览器确认订单结果。")
+        )
+
+    def _halt_auto_order(self, reason: str) -> None:
+        if self._auto_order_halted:
+            return
+        self._auto_order_halted = True
+        self.events.put(("log", f"已关闭自动下单（{reason}）。监控继续运行，只报警不下单。"))
+
+    def _slot_key(self, slot: Slot) -> str:
+        return f"{slot.venue_key}|{slot.date.isoformat()}|{slot.hour}|{slot.court}"
+
+    def _slot_text(self, slot: Slot) -> str:
+        return f"{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}"
+
+    def _auto_order_slot(self, slot: Slot) -> tuple[str, str]:
+        """Select the cell, submit, and read the result back.
+
+        Returns ("success"|"failure"|"unknown", text). A submit is only reported
+        as done when the page confirms it, so a silent failure can never be
+        mistaken for a placed order.
+        """
         page = self._pages_by_venue.get(slot.venue_key)
         if not page or page.is_closed():
             raise RuntimeError(f"找不到 {slot.venue} 的预约标签页")
 
-        self.events.put(("log", f"唯一符合条件空场，开始自动下单：{slot.venue} {slot.date.isoformat()} {slot.hour} {slot.court}"))
-        self._click_slot_cell(page, slot)
-        page.wait_for_timeout(500)
-        self._click_text_button(page, "立即下单", timeout=5000)
-        page.wait_for_timeout(800)
-        self._accept_booking_notice(page)
-        page.wait_for_timeout(300)
-        self._click_text_button(page, "提交订单", timeout=5000)
+        self.events.put(("log", f"唯一符合条件空场，开始自动下单：{self._slot_text(slot)}"))
+        self._clear_transient_notices(page)
 
-    def _click_slot_cell(self, page, slot: Slot) -> None:
-        click_point = page.evaluate(
-            """
-            ({ targetCourt, targetHour }) => {
-              const visible = (el) => {
-                const rect = el.getBoundingClientRect();
-                const style = window.getComputedStyle(el);
-                return rect.width > 4 && rect.height > 4 && style.visibility !== 'hidden' && style.display !== 'none';
-              };
+        if not self._select_slot_for_order(page, slot):
+            raise RuntimeError(f"{slot.court} {slot.hour} 无法确认已选中，已放弃本次自动下单")
 
-              const norm = (text) => (text || '').replace(/\\s+/g, '').trim();
-              const all = Array.from(document.querySelectorAll('body *')).filter(visible);
-              const timeNodes = all
-                .map((el) => ({ el, text: norm(el.innerText), rect: el.getBoundingClientRect() }))
-                .filter((item) => /^\\d{2}:00$/.test(item.text))
-                .sort((a, b) => a.rect.top - b.rect.top);
-              const courtNodes = all
-                .map((el) => ({ el, text: norm(el.innerText), rect: el.getBoundingClientRect() }))
-                .filter((item) => /^场地\\d+$/.test(item.text))
-                .sort((a, b) => a.rect.left - b.rect.left);
+        failure = self._failure_notice_text(page)
+        if failure:
+            return "failure", failure
 
-              if (timeNodes.length === 0 || courtNodes.length === 0) {
-                return { error: '没有识别到时间行或场地列。' };
-              }
+        self._click_visible_text_button(page, "立即下单", timeout=3000)
+        page.wait_for_timeout(180)
+        failure = self._failure_notice_text(page)
+        if failure:
+            return "failure", failure
 
-              const gridLeft = Math.min(...courtNodes.map((item) => item.rect.left)) - 20;
-              const gridRight = Math.max(...courtNodes.map((item) => item.rect.right)) + 20;
-              const gridTop = Math.min(...timeNodes.map((item) => item.rect.top)) - 20;
-              const gridBottom = Math.max(...timeNodes.map((item) => item.rect.bottom)) + 80;
+        if not self._accept_booking_notice_fast(page):
+            raise RuntimeError("没有确认勾选预订须知，已放弃本次自动下单以避免误提交")
 
-              const isAvailable = (el) => {
-                const chain = [];
-                let current = el;
-                for (let depth = 0; current && depth < 4; depth += 1) {
-                  chain.push(current);
-                  current = current.parentElement;
-                }
-                const combined = chain.map((node) => {
-                  const text = norm(node.innerText);
-                  const title = norm(node.getAttribute('title'));
-                  const aria = norm(node.getAttribute('aria-label'));
-                  const klass = norm(node.className && node.className.toString());
-                  const dataState = norm(node.getAttribute('data-state') || node.getAttribute('data-status'));
-                  return `${text}|${title}|${aria}|${klass}|${dataState}`;
-                }).join('|');
+        self._click_visible_text_button(page, "提交订单", timeout=3000)
+        return self._wait_for_order_result(page)
 
-                if (/不可选|已约|已满|禁用|disabled|disable|unavailable|booked|sold|reserved/i.test(combined)) {
-                  return false;
-                }
-                if (/可选|available|selectable|free|empty|enabled|optional|appointable/i.test(combined)) {
-                  return true;
-                }
+    def _select_slot_for_order(self, page, slot: Slot) -> bool:
+        """Click the target cell if needed and verify it reached the order bar."""
+        cell_state = self._slot_cell_state(page, slot)
+        state_name = str(cell_state.get("state", ""))
 
-                const colorText = chain.map((node) => {
-                  const style = window.getComputedStyle(node);
-                  return `${style.backgroundColor} ${style.borderColor} ${style.backgroundImage}`;
-                }).join(' ').toLowerCase();
-                const blueish = /rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)/g;
-                let match;
-                while ((match = blueish.exec(colorText)) !== null) {
-                  const r = Number(match[1]);
-                  const g = Number(match[2]);
-                  const b = Number(match[3]);
-                  if (b >= 185 && g >= 120 && r <= 210 && b - r >= 30 && b - g >= 8) {
-                    return true;
-                  }
-                }
-                return false;
-              };
+        if slot_cell_can_submit(state_name):
+            if not slot_cell_needs_click(state_name, self._selected_order_matches_slot(page, slot)):
+                self.events.put(("log", f"{slot.court} 已经在订单栏中确认选中，继续下单。"))
+                return True
+            self._try_select_slot_cell(page, slot, cell_state)
+            return self._wait_for_slot_selected(page, slot)
 
-              const candidates = all
-                .map((el) => ({ el, rect: el.getBoundingClientRect() }))
-                .filter((item) =>
-                  item.rect.left >= gridLeft &&
-                  item.rect.right <= gridRight &&
-                  item.rect.top >= gridTop &&
-                  item.rect.bottom <= gridBottom &&
-                  item.rect.width >= 25 &&
-                  item.rect.width <= 90 &&
-                  item.rect.height >= 20 &&
-                  item.rect.height <= 70
-                )
-                .filter((item) => isAvailable(item.el));
+        if state_name == "unknown" and cell_state.get("x") is not None:
+            # The scanner (4-level ancestor text/colour match) and this probe
+            # (geometric cell) can disagree; click anyway but still require the
+            # order bar to confirm before anything is submitted.
+            self.events.put(("log", f"{slot.court} 格子状态无法确认（{cell_state.get('reason')}），先点击并用订单栏回读校验。"))
+            self._try_select_slot_cell(page, slot, cell_state)
+            return self._wait_for_slot_selected(page, slot)
 
-              for (const item of candidates) {
-                const centerX = item.rect.left + item.rect.width / 2;
-                const centerY = item.rect.top + item.rect.height / 2;
-                const hour = timeNodes.reduce((best, node) => {
-                  const y = node.rect.top + node.rect.height / 2;
-                  const distance = Math.abs(centerY - y);
-                  return !best || distance < best.distance ? { node, distance } : best;
-                }, null);
-                const court = courtNodes.reduce((best, node) => {
-                  const x = node.rect.left + node.rect.width / 2;
-                  const distance = Math.abs(centerX - x);
-                  return !best || distance < best.distance ? { node, distance } : best;
-                }, null);
-
-                if (
-                  hour &&
-                  court &&
-                  hour.distance <= 45 &&
-                  court.distance <= 60 &&
-                  hour.node.text === targetHour &&
-                  court.node.text === targetCourt
-                ) {
-                  item.el.scrollIntoView({ block: 'center', inline: 'center' });
-                  const rect = item.el.getBoundingClientRect();
-                  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-                }
-              }
-
-              return { error: `没有找到 ${targetCourt} ${targetHour} 对应的可选格子。` };
-            }
-            """,
-            {"targetCourt": slot.court, "targetHour": slot.hour},
-        )
-        if click_point.get("error"):
-            raise RuntimeError(click_point["error"])
-        page.mouse.click(click_point["x"], click_point["y"])
-
-    def _click_text_button(self, page, text: str, timeout: int) -> None:
-        try:
-            page.get_by_role("button", name=re.compile(text)).last.click(timeout=timeout)
-            return
-        except Exception:
-            pass
-        page.get_by_text(text, exact=True).last.click(timeout=timeout)
-
-    def _accept_booking_notice(self, page) -> None:
-        try:
-            page.get_by_text("预订须知", exact=False).first.wait_for(timeout=5000)
-        except Exception:
-            pass
-
-        result = page.evaluate(
-            """
-            () => {
-              const norm = (text) => (text || '').replace(/\\s+/g, '').trim();
-              const labels = Array.from(document.querySelectorAll('label'));
-              const label = labels.find((item) => /本人已认真阅读|自愿接受|同意/.test(norm(item.innerText)));
-              if (label) {
-                label.click();
-                return { ok: true };
-              }
-
-              const textNode = Array.from(document.querySelectorAll('body *'))
-                .find((item) => /本人已认真阅读|自愿接受|同意/.test(norm(item.innerText)));
-              if (textNode) {
-                const target = textNode.closest('label') || textNode;
-                target.click();
-                return { ok: true };
-              }
-
-              const checkbox = Array.from(document.querySelectorAll('input[type="checkbox"]')).find((item) => !item.checked);
-              if (checkbox) {
-                checkbox.click();
-                return { ok: true };
-              }
-
-              return { error: '没有找到须知勾选框。' };
-            }
-            """
-        )
-        if result.get("error"):
-            raise RuntimeError(result["error"])
+        self.events.put(("log", f"{slot.court} 不是可下单格子（{cell_state.get('reason')}），本次不下单。"))
+        return False
 
     def _log_not_ready(self, message: str) -> None:
         now = time.monotonic()
@@ -424,24 +348,9 @@ class VenueMonitor:
             self._last_not_ready_log_at = now
             self.events.put(("log", message))
 
-    def _looks_like_booking_url(self, url: str) -> bool:
-        normalized = url.lower()
-        return (
-            "sports.sjtu.edu.cn" in normalized
-            or "appointmentdetails" in normalized
-            or "apointmentdetails" in normalized
-            or "appointment" in normalized
-        )
-
     def _looks_like_venue_url(self, url: str, venue: Venue) -> bool:
         venue_id = self._appointment_id_from_url(venue.url)
         return bool(venue_id and venue_id in (url or "").lower())
-
-    def _venue_from_url(self, url: str) -> Venue | None:
-        for venue in VENUES:
-            if self._looks_like_venue_url(url, venue):
-                return venue
-        return None
 
     def _appointment_id_from_url(self, url: str) -> str:
         match = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", url.lower())
@@ -455,13 +364,6 @@ class VenueMonitor:
             )
         except Exception:
             return False
-
-    def _looks_like_booking_text(self, text: str) -> bool:
-        compact = re.sub(r"\s+", "", text or "")
-        has_venue = any(venue.name in compact for venue in VENUES) or "网球场地" in compact
-        has_grid = ("场地1" in compact or "场地2" in compact) and ("07:00" in compact or "08:00" in compact)
-        has_system = "场馆预约系统" in compact or "VENUERESERVATIONSYSTEM" in compact
-        return has_venue or has_grid or (has_system and has_grid)
 
     def _log_visible_pages(self, pages) -> None:
         now = time.monotonic()
@@ -554,16 +456,8 @@ class VenueMonitor:
     def _extract_available_slots(self, page, config: MonitorConfig, target_date: dt.date, venue: Venue) -> list[Slot]:
         target_hours = [f"{hour:02d}:00" for hour in range(config.start_hour, config.end_hour)]
         raw_slots = page.evaluate(
-            """
-            ({ targetHours }) => {
-              const visible = (el) => {
-                const rect = el.getBoundingClientRect();
-                const style = window.getComputedStyle(el);
-                return rect.width > 4 && rect.height > 4 && style.visibility !== 'hidden' && style.display !== 'none';
-              };
-
-              const norm = (text) => (text || '').replace(/\\s+/g, '').trim();
-              const all = Array.from(document.querySelectorAll('body *')).filter(visible);
+            grid_probe("targetHours", """
+              const all = visibleElements();
               const bodyText = norm(document.body.innerText);
 
               const timeNodes = all
@@ -580,15 +474,12 @@ class VenueMonitor:
                 return { error: '没有识别到时间行或场地列。请确认页面停留在网球场预约表格。' };
               }
 
-              const gridLeft = Math.min(...courtNodes.map((item) => item.rect.left)) - 20;
-              const gridRight = Math.max(...courtNodes.map((item) => item.rect.right)) + 20;
-              const gridTop = Math.min(...timeNodes.map((item) => item.rect.top)) - 20;
-              const gridBottom = Math.max(...timeNodes.map((item) => item.rect.bottom)) + 80;
+              const bounds = gridBounds(courtNodes, timeNodes);
 
               const isAvailable = (el) => {
                 const chain = [];
                 let current = el;
-                for (let depth = 0; current && depth < 4; depth += 1) {
+                for (let depth = 0; current && depth < geom.scannerChainDepth; depth += 1) {
                   chain.push(current);
                   current = current.parentElement;
                 }
@@ -619,13 +510,7 @@ class VenueMonitor:
                   const r = Number(match[1]);
                   const g = Number(match[2]);
                   const b = Number(match[3]);
-                  const lightSelectableBlue =
-                    b >= 185 &&
-                    g >= 120 &&
-                    r <= 210 &&
-                    b - r >= 30 &&
-                    b - g >= 8;
-                  if (lightSelectableBlue) {
+                  if (isSelectableBlue(r, g, b)) {
                     return true;
                   }
                 }
@@ -635,16 +520,7 @@ class VenueMonitor:
 
               const candidates = all
                 .map((el) => ({ el, rect: el.getBoundingClientRect() }))
-                .filter((item) =>
-                  item.rect.left >= gridLeft &&
-                  item.rect.right <= gridRight &&
-                  item.rect.top >= gridTop &&
-                  item.rect.bottom <= gridBottom &&
-                  item.rect.width >= 25 &&
-                  item.rect.width <= 90 &&
-                  item.rect.height >= 20 &&
-                  item.rect.height <= 70
-                )
+                .filter((item) => boxInsideGrid(item.rect, bounds) && boxIsGridCell(item.rect))
                 .filter((item) => isAvailable(item.el));
 
               const results = [];
@@ -664,14 +540,14 @@ class VenueMonitor:
                   return !best || distance < best.distance ? { node, distance } : best;
                 }, null);
 
-                if (!hour || !court || hour.distance > 45 || court.distance > 60) {
+                if (!hour || !court || hour.distance > geom.maxRowDistance || court.distance > geom.maxColumnDistance) {
                   continue;
                 }
 
                 const key = `${court.node.text}-${hour.node.text}`;
                 if (!seen.has(key)) {
                   seen.add(key);
-                  results.push({ court: court.node.text, hour: hour.node.text, label: key });
+                  results.push({ court: court.node.text, hour: hour.node.text });
                 }
               }
 
@@ -680,8 +556,8 @@ class VenueMonitor:
                 candidateCount: candidates.length,
               };
             }
-            """,
-            {"targetHours": target_hours},
+            """),
+            grid_arguments(targetHours=target_hours),
         )
 
         if raw_slots.get("error"):
@@ -699,7 +575,6 @@ class VenueMonitor:
                 date=target_date,
                 court=item["court"],
                 hour=item["hour"],
-                label=item["label"],
             )
             for item in slot_items
             if court_matches_monitor_scope(venue.key, item["court"], config)

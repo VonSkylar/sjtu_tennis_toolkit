@@ -62,19 +62,3 @@ class Slot:
     date: dt.date
     court: str
     hour: str
-    label: str
-
-
-@dataclass(frozen=True)
-class UiNode:
-    """A single node from an Android UI Automator XML dump."""
-    text: str
-    bounds: tuple[int, int, int, int]
-    clickable: bool
-    enabled: bool
-    selected: bool
-
-    @property
-    def center(self) -> tuple[int, int]:
-        left, top, right, bottom = self.bounds
-        return ((left + right) // 2, (top + bottom) // 2)
