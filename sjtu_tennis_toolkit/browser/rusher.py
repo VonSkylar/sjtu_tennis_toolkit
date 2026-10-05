@@ -278,6 +278,13 @@ class RushBooker(VenueMonitor):
                 if page.is_closed():
                     raise RuntimeError("浏览器页面已关闭")
                 self._ensure_booking_page(page, config.venue)
+                if self._has_request_too_frequent_notice(page):
+                    self.events.put(("log", "学校系统提示“请求过于频繁”，等待 1 秒后再刷新预约页。"))
+                    # A settings wake-up must not shorten the server cooldown.
+                    if self.stop_event.wait(1.0) or dt.datetime.now() >= deadline:
+                        return False
+                    self._reload_booking_page(page, timeout_error_type)
+                    continue
                 return True
             except RequestRateLimited:
                 raise

@@ -441,6 +441,10 @@ class VenueMonitor(BookingPageActions):
         if "每日请求超过限制" in text or "请求超过限制" in text:
             raise RequestRateLimited("学校系统提示\u201c每日请求超过限制，无法获取\u201d。")
 
+    def _has_request_too_frequent_notice(self, page) -> bool:
+        text = page.locator("body").inner_text(timeout=3000)
+        return "请求过于频繁" in re.sub(r"\s+", "", text or "")
+
     def _select_target_date(self, page, timeout_error_type, target_date: dt.date, venue: Venue) -> None:
         for label in target_date_labels(target_date):
             locator = page.get_by_text(label, exact=False).first
