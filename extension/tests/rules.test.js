@@ -2,8 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {spawnSync} from "node:child_process";
 import {fileURLToPath} from "node:url";
-import {chinaDate,chinaTime,addDays,parseDates,defaultDateText,allowedCourts,courtOrder,parseTimeRange,validateConfig,RUSH_DEFAULTS,monitorDefaults,cooldownUntil,autoOrderCandidate,slotKey} from "../rules.js";
+import {chinaDate,chinaTime,addDays,parseDates,defaultDateText,allowedCourts,courtOrder,parseTimeRange,validateConfig,RUSH_DEFAULTS,monitorDefaults,cooldownUntil,autoOrderCandidate,slotKey,isVenueUrl,VENUES,SCHOOL} from "../rules.js";
 const at=s=>Date.parse(s+"+08:00");
+test("预约页按路由和场馆 ID 判断，首页推荐文字或查询参数不能代替",()=>{
+  assert.equal(isVenueUrl(VENUES.east.url,"east"),true);
+  assert.equal(isVenueUrl(VENUES.huxiaoming.url,"east"),false);
+  for(const url of [SCHOOL+"/pc/#/",SCHOOL+"/pc/?venue="+VENUES.east.id+"#/",SCHOOL+"/pc/#/orderDetails/"+VENUES.east.id,VENUES.east.url.replace(SCHOOL,"https://example.com")]) assert.equal(isVenueUrl(url,"east"),false);
+});
 test("北京时间不依赖主机时区，跨月跨年与闰年正确",()=>{
   assert.equal(chinaDate(Date.parse("2026-10-31T16:01:00Z")),"2026-11-01");
   assert.equal(chinaTime(Date.parse("2026-10-31T04:00:00Z")),"12:00:00");

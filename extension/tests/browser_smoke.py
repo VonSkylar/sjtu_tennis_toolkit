@@ -64,6 +64,20 @@ def run():
             panel.screenshot(path=str(OUT / "timeout.png"), full_page=True)
             print("UI_ERROR", panel.locator("#error").text_content(), "PAGE_ERRORS", errors, "FIXTURE_EVENTS", events[-20:], flush=True)
             raise AssertionError("Timed out: " + json.dumps(state(), ensure_ascii=False))
+        # Home contains both recommendation names, but is not a booking page.
+        home=context.new_page();home.goto('https://sports.sjtu.edu.cn/pc/#/')
+        response=worker.evaluate('''async()=>{
+          const tab=(await chrome.tabs.query({url:'https://sports.sjtu.edu.cn/*'})).find(t=>t.url==='https://sports.sjtu.edu.cn/pc/#/');
+          const hello=await chrome.tabs.sendMessage(tab.id,{type:'AGENT_HELLO'});
+          await chrome.tabs.sendMessage(tab.id,{type:'AGENT_BIND',runId:'read-only-home-test',deadline:null});
+          const base={type:'AGENT_COMMAND',runId:'read-only-home-test',documentId:hello.documentId,venueId:'3466293b-a7d8-45be-a918-8526e3bed4c5',venueName:'东区网球场'};
+          const prepare=await chrome.tabs.sendMessage(tab.id,{...base,action:'prepare',commandId:'home-prepare',seq:1});
+          const scan=await chrome.tabs.sendMessage(tab.id,{...base,action:'scan',commandId:'home-scan',seq:2,date:'2026-11-01',start:17,end:22});
+          return {prepare:prepare.kind,scan:scan.kind};
+        }''')
+        checked('homepage recommendation names do not count as a venue page',response['prepare']=='wrong_venue')
+        checked('page agent refuses scanning homepage before reading dates',response['scan']=='wrong_venue')
+        home.close()
         for width in [320, 380, 520]:
             panel.set_viewport_size({"width": width, "height": 1100})
             checked(f"sidepanel {width}px has no horizontal overflow", panel.evaluate("document.documentElement.scrollWidth <= innerWidth"))
@@ -146,6 +160,16 @@ def run():
         send("START",mode="monitor",config=both)
         wait_for(lambda s:len(s["task"]["slots"])==2)
         checked("both venues aggregate before unique-slot decision", not any(e["action"]=="submit" for e in events))
+        before=state()['task']['lastCheck'];east.goto('https://sports.sjtu.edu.cn/pc/#/')
+        restored=wait_for(lambda s:len(s['task']['slots'])==2 and s['task']['lastCheck']>before and '3466293b-a7d8-45be-a918-8526e3bed4c5' in east.url)
+        checked('post-login homepage is immediately returned to East booking page',not any('东区网球场 当前没有可检查' in row['text'] for row in restored['task']['logs']))
+        active_worker=context.service_workers[0];east_id=restored['task']['tabs']['east']
+        old_doc=active_worker.evaluate("async id=>(await chrome.tabs.sendMessage(id,{type:'AGENT_HELLO'})).documentId",east_id)
+        before=restored['task']['lastCheck'];east.evaluate("location.hash='#/'")
+        restored=wait_for(lambda s:len(s['task']['slots'])==2 and s['task']['lastCheck']>before and '3466293b-a7d8-45be-a918-8526e3bed4c5' in east.url)
+        new_doc=active_worker.evaluate("async id=>(await chrome.tabs.sendMessage(id,{type:'AGENT_HELLO'})).documentId",east_id)
+        checked('same-document homepage routing is repaired without reloading the agent',new_doc==old_doc)
+        checked('routing repair keeps both venue candidates and makes no order',not any(e['action']=='submit' for e in events))
         new_date=panel.evaluate("async()=>{const r=await import('./rules.js');return r.addDays(r.chinaDate(),2)}")
         send("SAVE_SETTINGS",mode="monitor",config={**both,"dateText":new_date})
         wait_for(lambda s:len(s["task"]["slots"])==2 and all(slot["date"]==new_date for slot in s["task"]["slots"]))

@@ -6,7 +6,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 EXT = ROOT / "extension"
-FILES = ["manifest.json", "background.js", "controller.js", "rules.js", "probes.js", "content.js",
+FILES = ["manifest.json", "background.js", "controller.js", "rules.js", "route.js", "probes.js", "content.js",
          "sidepanel.html", "sidepanel.js", "sidepanel.css", "offscreen.html", "offscreen.js", "README.md", "VALIDATION.md",
          "icons/icon16.png", "icons/icon48.png", "icons/icon128.png", "sounds/alert.wav"]
 

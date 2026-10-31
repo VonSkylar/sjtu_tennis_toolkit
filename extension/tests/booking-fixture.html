@@ -7,6 +7,13 @@ const fixture=__FIXTURE_CONFIG__;
 const time=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
 const date=n=>{const d=new Date(Date.now()+86400000*n),p=Object.fromEntries(time.formatToParts(d).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
 const record=(action,extra={})=>console.log('FIXTURE:'+JSON.stringify({action,...extra}));
+const template=document.body.cloneNode(true);template.querySelectorAll('script').forEach(el=>el.remove());
+function render(){
+document.body.replaceChildren(...template.cloneNode(true).childNodes);
+if(location.hash==='#/'){
+ document.body.innerHTML='<h1>智慧场馆</h1><p>胡晓明网球场</p><p>东区网球场</p>';record('home');return;
+}
+document.querySelector('h1').textContent=location.hash.includes('3466293b-a7d8-45be-a918-8526e3bed4c5')?'东区网球场':'胡晓明网球场';
 let selected=null,selectedDate=date(1);
 for(let i=0;i<8;i++){const b=document.createElement('button');b.textContent=date(i);b.onclick=()=>{selectedDate=b.textContent;record('date',{date:selectedDate});};document.getElementById('dates').append(b);}
 const table=document.getElementById('grid');const head=table.insertRow();head.insertCell().textContent='时间';for(let court=1;court<=8;court++)head.insertCell().textContent=`场地${court}`;
@@ -27,4 +34,6 @@ document.getElementById('submit').onclick=()=>{
 if(fixture.daily){const p=document.createElement('p');p.textContent='每日请求超过限制，无法获取';document.body.prepend(p);}
 if(fixture.frequent){const p=document.createElement('p');p.textContent='请求 过于\n频繁，请稍后再试';document.body.prepend(p);}
 record('loaded');
+}
+addEventListener('hashchange',render);render();
 </script></body></html>

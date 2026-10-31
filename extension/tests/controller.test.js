@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {environment} from "./fake-browser.js";
+import {VENUES,SCHOOL} from "../rules.js";
 test("监控恰好一个候选自动提交一次，成功后继续监控但不再提交",async()=>{
   const e=environment();await e.controller.start("monitor",e.monitor);await e.until(()=>e.controller.task.autoHalted);
   assert.equal(e.submits,1);assert.equal(e.controller.task.active,true);
@@ -114,4 +115,25 @@ test("首次登录只准备一个场馆，登录完成后再准备其他场馆",
   await e.controller.start("monitor",{...e.monitor,venues:["east","huxiaoming"]});await e.step();
   assert.equal(Object.keys(e.controller.task.tabs).length,1);assert.equal(e.controller.task.status,"login");
   loggedIn=true;await e.until(()=>e.controller.task.phase==="monitor");assert.equal(Object.keys(e.controller.task.tabs).length,2);
+});
+test("登录回到首页后必须纠正东区路由再检查日期",async()=>{
+  const e=environment(),create=e.api.tabs.create;
+  e.api.tabs.create=async data=>{const tab=await create(data);if(data.url.includes(VENUES.east.id)) tab.url=SCHOOL+"/pc/#/";return tab;};
+  await e.controller.start("monitor",{...e.monitor,venues:["east","huxiaoming"],autoOrder:false});
+  await e.until(()=>e.controller.task.phase==="monitor");
+  assert.equal(e.tabs.get(e.controller.task.tabs.east).url,VENUES.east.url);
+  assert.ok(e.controller.task.logs.some(x=>x.text.includes("东区网球场")&&x.text.includes("预约页")));
+});
+test("运行中跳回首页立即纠正，丢弃上轮候选而不误判日期缺失",async()=>{
+  const e=environment();await e.controller.start("monitor",{...e.monitor,venues:["east","huxiaoming"],autoOrder:false});
+  await e.until(()=>Boolean(e.controller.task.lastCheck));const t=e.controller.task,id=t.tabs.east,taskId=t.id;
+  e.tabs.get(id).url=SCHOOL+"/pc/#/";
+  await e.controller.ready({tab:{id},frameId:0,url:SCHOOL+"/pc/#/"});
+  await e.step();assert.equal(e.tabs.get(id).url,VENUES.east.url);assert.equal(t.id,taskId);assert.equal(e.submits,0);
+  assert.ok(!t.logs.some(x=>x.text.includes("东区网球场 当前没有可检查")));
+});
+test("订单提交后的结果页不会被纠正回场馆或再次提交",async()=>{
+  const e=environment();await e.controller.start("rush",e.rush);await e.until(()=>e.submits===1);
+  const t=e.controller.task,id=t.tabs.huxiaoming,url=SCHOOL+"/pc/#/orderDetails/1";e.tabs.get(id).url=url;
+  await e.until(()=>!t.active);assert.equal(t.status,"success");assert.equal(e.tabs.get(id).url,url);assert.equal(e.submits,1);
 });

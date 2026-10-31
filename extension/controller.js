@@ -1,4 +1,4 @@
-import {SCHOOL,VENUES,RUSH_DEFAULTS,monitorDefaults,validateConfig,chinaTime,chinaDate,cooldownUntil,courtOrder,filterSlots,slotKey,slotText,autoOrderCandidate,taskExpired} from "./rules.js";
+import {SCHOOL,VENUES,RUSH_DEFAULTS,monitorDefaults,validateConfig,chinaTime,chinaDate,cooldownUntil,courtOrder,filterSlots,slotKey,slotText,autoOrderCandidate,taskExpired,isVenueUrl} from "./rules.js";
 
 const clone=value=>structuredClone(value);
 const uid=()=>crypto.randomUUID();
@@ -82,8 +82,9 @@ export class Controller {
   async ready(sender) {
     await this.init();if(sender.frameId!==0) return;
     const t=this.task;if(t?.active&&Object.values(t.tabs).includes(sender.tab?.id)&&t.status!=="manual") {
-      // Navigation only wakes an already-due operation. A scheduled reload must
-      // not interrupt the mandatory one-second rate-limit cooldown.
+      // React to post-login / SPA routing immediately, but never shorten a
+      // mandatory cooldown or redirect a potentially submitted order's result.
+      if(t.phase!=="recover"&&t.attempt?.stage!=="result") {t.routeDirty=true;t.nextAt=this.now();await this.persist(t);}
       this.schedule(t.nextAt||this.now());
     }
   }
@@ -106,7 +107,7 @@ export class Controller {
   }
   async openVenue(key="huxiaoming") {
     const venue=VENUES[key];if(!venue) throw Error("场馆无效");
-    const tabs=await this.api.tabs.query({url:SCHOOL+"/*"});const tab=tabs.find(x=>x.url?.includes(venue.id));
+    const tabs=await this.api.tabs.query({url:SCHOOL+"/*"});const tab=tabs.find(x=>isVenueUrl(x.url,key));
     if(tab) {await this.api.tabs.update(tab.id,{active:true});return tab.id;}
     return (await this.api.tabs.create({url:venue.url,active:true})).id;
   }
@@ -114,7 +115,7 @@ export class Controller {
     this.check(t);let id=t.tabs[key];
     if(id) {try {await this.api.tabs.get(id);return id;}catch {this.check(t);throw Error("预约标签页已关闭");}}
     const existing=await this.api.tabs.query({url:SCHOOL+"/*"});this.check(t);
-    const tab=existing.find(x=>x.url?.includes(VENUES[key].id))||await this.api.tabs.create({url:VENUES[key].url,active:Object.keys(t.tabs).length===0});
+    const tab=existing.find(x=>isVenueUrl(x.url,key))||await this.api.tabs.create({url:VENUES[key].url,active:Object.keys(t.tabs).length===0});
     this.check(t);t.tabs[key]=tab.id;await this.persist(t);return tab.id;
   }
   async send(tabId,message,timeout=7000) {
@@ -125,11 +126,12 @@ export class Controller {
     this.check(t);const tabId=await this.ensureTab(t,key);let hello;
     try {hello=await this.send(tabId,{type:"AGENT_HELLO"});}catch {return {kind:"loading",message:"等待学校页面加载或完成登录"};}
     this.check(t);
+    if(action!=="result"&&(hello.health?.kind||"ready")==="ready"&&!isVenueUrl(hello.url,key)) return {kind:"wrong_venue",clicked:false};
     await this.send(tabId,{type:"AGENT_BIND",runId:t.id,deadline:t.mode==="rush"?t.config.deadline:null});this.check(t);
     const seq=++t.seq,commandId=`${t.id}:${seq}`;
     t.pending={action,tabId,commandId,documentId:hello.documentId,authorized:false};await this.persist(t);this.check(t);
     try {
-      const result=await this.send(tabId,{type:"AGENT_COMMAND",runId:t.id,commandId,seq,documentId:hello.documentId,action,...data});
+      const result=await this.send(tabId,{type:"AGENT_COMMAND",runId:t.id,commandId,seq,documentId:hello.documentId,action,...data,venueId:VENUES[key].id,venueName:VENUES[key].name});
       this.check(t);
       if(result?.documentId!==hello.documentId) return {kind:"loading",message:"页面已刷新，等待重新连接"};
       if(!result.ok) {if(result.error==="DEADLINE") return {kind:"expired"};return {kind:"loading",message:result.error||"页面操作未完成"};}
@@ -163,13 +165,21 @@ export class Controller {
   }
   resetRound(t) {t.roundIndex=0;t.roundSlots=[];t.roundChecked=[];t.roundMisses=0;}
   async health(t,result,key) {
+    if(result.kind==="wrong_venue") {
+      this.check(t);
+      this.log(t,`${VENUES[key].name} 页面已跳离预约路由，正在返回该场馆预约页`);
+      if(t.mode==="monitor"&&!t.attempt) {this.resetRound(t);t.slots=[];}
+      t.message=`正在恢复${VENUES[key].name}预约页`;
+      await this.api.tabs.update(t.tabs[key],{url:VENUES[key].url});this.check(t);
+      t.nextAt=this.now()+1000;return false;
+    }
     if(result.kind==="daily_limit") {
       this.cooldown=cooldownUntil(this.now());await this.api.storage.local.set({cooldown:this.cooldown});
       await this.finish(t,"limited",`每日请求额度已达上限，冷却至 ${chinaDate(this.cooldown)} 00:10`);return false;
     }
     if(result.kind==="expired") {await this.finish(t,"expired","抢场窗口已结束");return false;}
     if(result.kind==="manual") {t.status="manual";t.message=result.message;this.log(t,result.message);t.nextAt=this.now()+30000;await this.notify(t,result.message,false);return false;}
-    if(result.kind==="login") {t.status="login";t.message="请在学校页面完成登录，成功后自动继续";t.resumePhase=t.phase;t.phase="prepare";t.nextAt=this.now()+1500;return false;}
+    if(result.kind==="login") {t.status="login";t.message="请在学校页面完成登录，成功后自动继续";if(t.phase!=="prepare") {t.resumePhase=t.phase;t.phase="prepare";}if(t.mode==="monitor"&&!t.attempt) {this.resetRound(t);t.slots=[];}t.nextAt=this.now()+1500;return false;}
     if(result.kind==="frequent") {
       this.log(t,result.message);t.recover={key,phase:t.phase};t.phase="recover";t.status="running";t.message="请求频繁，等待一秒后刷新";t.nextAt=this.now()+1000;return false;
     }
@@ -187,6 +197,10 @@ export class Controller {
         t.nextAt=this.now()+30000;return;
       }
       t.nextAt=this.now()+100;
+      if(t.routeDirty&&t.phase!=="prepare"&&t.phase!=="recover"&&t.attempt?.stage!=="result") {
+        if(!await this.ensureBookingPages(t)) return;
+        t.routeDirty=false;
+      }
       if(t.phase==="prepare") await this.prepare(t);
       else if(t.phase==="recover") {const {key,phase}=t.recover;this.check(t);await this.api.tabs.reload(t.tabs[key]);this.check(t);t.phase=phase;t.nextAt=this.now()+400;}
       else if(t.phase==="attempt") await this.orderStep(t);
@@ -199,23 +213,30 @@ export class Controller {
       }
     }finally {
       this.busy=false;
-      if(this.task===t) await this.persist(t);
+      if(this.task===t) {
+        if(t.routeDirty&&t.phase!=="recover"&&t.status!=="manual"&&t.attempt?.stage!=="result"&&t.nextAt>this.now()+1500) t.nextAt=this.now();
+        await this.persist(t);
+      }
       if(this.task?.active) this.schedule(this.task.nextAt);
     }
   }
-  async prepare(t) {
+  async ensureBookingPages(t) {
     for(const key of t.mode==="monitor"?t.config.venues:[t.config.venue]) {
-      const result=await this.call(t,key,"prepare",{venueId:VENUES[key].id,venueName:VENUES[key].name});
-      if(result.kind==="wrong_venue") {await this.api.tabs.update(t.tabs[key],{url:VENUES[key].url});this.check(t);t.nextAt=this.now()+1000;return;}
-      if(result.kind==="login") {t.status="login";t.message="请在学校页面完成登录，成功后自动继续";t.nextAt=this.now()+1500;return;}
-      if(!await this.health(t,result,key)) return;
+      const result=await this.call(t,key,"prepare");
+      if(!await this.health(t,result,key)) return false;
     }
+    return true;
+  }
+  async prepare(t) {
+    if(!await this.ensureBookingPages(t)) return;
+    t.routeDirty=false;
     t.status="running";t.message="预约页面已就绪";
     t.phase=t.resumePhase||(t.mode==="monitor"?"monitor":"wait");delete t.resumePhase;
     t.nextAt=this.now();this.log(t,"预约页面已就绪");
   }
   async monitorStep(t) {
     const config=t.config;
+    if(t.roundIndex===0&&!await this.ensureBookingPages(t)) return;
     if(t.roundIndex<config.venues.length) {
       const key=config.venues[t.roundIndex],cursor=(t.cursor[key]||0)%config.dates.length,date=config.dates[cursor],revision=t.revision;
       const result=await this.call(t,key,"scan",{date,start:config.start,end:config.end});
@@ -309,7 +330,7 @@ export class Controller {
     if(action==="submit") {
       if(result.clicked===false) {
         if(result.kind==="unknown") {await this.unknown(t,result.message||"页面提示已经提交，请核对订单");}
-        else if(["manual","login","frequent","daily_limit","expired"].includes(result.kind)) {
+        else if(["manual","login","frequent","daily_limit","expired","wrong_venue"].includes(result.kind)) {
           a.stage=result.kind==="manual"?"accept":"select";await this.health(t,result,key);
         }else await this.rejectAttempt(t,result.message||"提交前校验未通过，未点击提交");
       }

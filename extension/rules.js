@@ -1,3 +1,4 @@
+import "./route.js";
 export const SCHOOL = "https://sports.sjtu.edu.cn";
 export const VENUES = {
   east: {key:"east", name:"东区网球场", id:"3466293b-a7d8-45be-a918-8526e3bed4c5"},
@@ -6,6 +7,7 @@ export const VENUES = {
 for (const venue of Object.values(VENUES)) {
   venue.url = `${SCHOOL}/pc/?locale=zh#/apointmentDetails/1/${venue.id}/%25E5%2585%25A8%25E9%2583%25A8/0`;
 }
+export function isVenueUrl(url,key) {return Boolean(VENUES[key]&&globalThis.SJTU_ROUTE.matches(url,VENUES[key].id));}
 export const RUSH_DEFAULTS = Object.freeze({venue:"huxiaoming", scope:"indoor", court:6,
   releaseTime:"12:00:00", times:["19:00-20:00","20:00-21:00","21:00-22:00","18:00-19:00"]});
 export const scopeNames = {all:"全部都要", indoor:"只要室内场", outdoor:"只要室外场"};

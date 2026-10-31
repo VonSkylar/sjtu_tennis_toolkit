@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "交我办网球助手",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "在当前浏览器中监控网球空场、按优先级定时预约。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "alarms", "sidePanel", "notifications", "offscreen"],
@@ -12,7 +12,7 @@
   "side_panel": {"default_path": "sidepanel.html"},
   "content_scripts": [{
     "matches": ["https://sports.sjtu.edu.cn/*"],
-    "js": ["probes.js", "content.js"],
+    "js": ["route.js", "probes.js", "content.js"],
     "run_at": "document_idle",
     "all_frames": false
   }],

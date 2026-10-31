@@ -72,8 +72,7 @@
     if(m.action==="prepare") {
       if(h.kind==="login") {const target=all().find(el=>norm(el.innerText)==="校内人员登录");if(target) click(target,m);return h;}
       if(h.kind!=="ready") return h;
-      const hasVenue=location.href.includes(m.venueId)||norm(document.body.innerText).includes(m.venueName);
-      return hasVenue?{kind:"ready"}:{kind:"wrong_venue"};
+      return globalThis.SJTU_ROUTE.matches(location.href,m.venueId)?{kind:"ready"}:{kind:"wrong_venue",clicked:false};
     }
     if(m.action==="result") {
       const end=Date.now()+Math.max(0,Math.min(3100,m.timeout??3100));
@@ -87,6 +86,9 @@
       return {kind:"unknown",message:"提交后没有看到明确成功或失败提示，请核对学校订单"};
     }
     if(h.kind!=="ready") return m.action==="submit"?{...h,clicked:false}:h;
+    // Home recommendations contain both venue names. Only the appointment
+    // route and its exact venue ID authorize scanning or booking actions.
+    if(!globalThis.SJTU_ROUTE.matches(location.href,m.venueId)) return {kind:"wrong_venue",clicked:false};
     if(m.action==="dates") return {kind:"ready",...P.dates(args({labels:labels(m.date).map(norm),readyCount:7}))};
     if(m.action==="scan") {
       if(!await selectDate(m.date,m)) return {kind:"not_open",message:`${m.date} 尚未出现在日期条`};
@@ -165,5 +167,8 @@
       if(cache.size>64) cache.delete(cache.keys().next().value);respond(response);
     }).catch(e=>respond({ok:false,error:e.message,documentId:docId})).finally(()=>{busy=false;});return true;
   });
-  chrome.runtime.sendMessage({type:"AGENT_READY",documentId:docId}).catch(()=>{});
+  const announce=()=>chrome.runtime.sendMessage({type:"AGENT_READY",documentId:docId}).catch(()=>{});
+  addEventListener("hashchange",announce);
+  addEventListener("popstate",announce);
+  announce();
 })();
