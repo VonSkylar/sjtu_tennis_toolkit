@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交我办网球助手</title><link rel="stylesheet" href="sidepanel.css"></head>
+<body>
+  <header class="brand"><img src="icons/icon48.png" width="36" height="36" alt=""><div><h1>交我办网球助手</h1><p>选好时间，把等待交给助手</p></div><span class="local">本机运行</span></header>
+  <main>
+    <nav class="mode-tabs" aria-label="功能模式"><button id="mode-monitor" class="selected" aria-pressed="true">空场监控</button><button id="mode-rush" aria-pressed="false">定时抢场</button></nav>
+    <section class="status-card" aria-live="polite"><div class="status-top"><span class="eyebrow">当前任务</span><span id="status-badge" class="badge">未开始</span></div><p id="status-text">设置条件后即可开始</p><div class="status-meta"><span id="status-detail">关闭侧边栏不会停止任务</span><span id="clock">北京时间</span></div><button id="resume" class="outline" hidden>检查并继续</button></section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <form id="monitor-form" autocomplete="off">
+      <section class="card"><div class="section-title"><h2>监控条件</h2><span>发现退订空场及时提醒</span></div>
+        <fieldset><legend>场馆</legend><div class="venue-options"><label class="check-tile"><input type="checkbox" name="venue" value="east">东区网球场</label><label class="check-tile"><input type="checkbox" name="venue" value="huxiaoming">胡晓明网球场</label></div></fieldset>
+        <label class="field">胡晓明场地范围<select name="scope"><option value="all">全部都要</option><option value="indoor">只要室内场 · 6、7 号</option><option value="outdoor">只要室外场 · 1–5、8 号</option></select></label>
+        <label class="field">监控日期<textarea name="dateText" rows="2" spellcheck="false" placeholder="2026-11-01~2026-11-07"></textarea></label><p class="hint">可填单日、逗号分隔的多日或日期范围，最多 14 天。</p>
+        <div class="two-col"><label class="field">开始时间<select name="start"></select></label><label class="field">结束时间<select name="end"></select></label></div>
+        <label class="field">检查间隔<div class="input-unit"><input name="interval" type="number" min="10" step="1" required><span>秒</span></div></label>
+        <div class="auto-box"><label class="switch-label"><input name="autoOrder" type="checkbox"><span>唯一空场自动下单</span></label><p>本轮恰好一个符合条件的空场时提交；多个空场只提醒。</p></div>
+      </section>
+    </form>
+    <form id="rush-form" autocomplete="off" hidden>
+      <section class="card"><div class="section-title"><h2>抢场设置</h2><span>按你的优先顺序尝试</span></div>
+        <label class="field">场馆<select name="venue"><option value="huxiaoming">胡晓明网球场</option><option value="east">东区网球场</option></select></label>
+        <div class="two-col"><label class="field">场地范围<select name="scope"><option value="indoor">只要室内场</option><option value="outdoor">只要室外场</option><option value="all">全部都要</option></select></label><label class="field">优先场地<select name="court"></select></label></div>
+        <div class="two-col"><label class="field">开始抢场<input name="releaseTime" type="time" step="1" required></label><div class="target-date"><span>目标日期</span><strong id="target-date"></strong><small>自动计算七天后</small></div></div>
+        <div class="section-title time-title"><h3>时段优先级</h3><span>每次预约一小时</span></div><div id="time-rows"></div><button id="add-time" type="button" class="add-time">＋ 添加备选时段</button>
+        <p class="hint">先尝试第一时段及优先场地，失败后继续尝试备选。放场后一分钟结束。</p>
+      </section>
+    </form>
+    <div class="actions"><button id="start" class="primary">开始监控</button><button id="stop" class="outline" disabled>停止任务</button></div>
+    <div class="utility"><button id="open-venue" class="text-button">打开预约页 ↗</button><button id="reset" class="text-button">恢复默认</button><button id="stop-alarm" class="text-button" disabled>停止报警</button></div>
+    <section class="card results"><div class="section-title"><h2>符合条件的空场</h2><span id="slot-count">0 个</span></div><div id="slots"><p class="empty">开始监控后，符合条件的场次会显示在这里。</p></div></section>
+    <section class="card log-card"><div class="section-title"><h2>运行记录</h2><span id="last-check">尚未检查</span></div><div id="logs" class="logs" role="log" aria-label="运行记录"><p class="empty">准备就绪，等待开始。</p></div></section>
+    <footer><p>预约页保持打开，设备保持联网和唤醒。</p><p>全部时间均为北京时间 · 有效设置自动保存</p></footer>
+  </main><script type="module" src="sidepanel.js"></script>
+</body></html>

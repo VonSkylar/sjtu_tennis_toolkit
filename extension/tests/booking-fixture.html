@@ -1,0 +1,30 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>预约页面测试夹具</title>
+<style>body{font-family:sans-serif;padding:24px;color:#24382b}button{padding:10px;margin:4px}table{border-collapse:collapse;margin:20px 0}th,td{width:46px;min-width:46px;height:36px;text-align:center;border:1px solid white;font-size:12px}td.available{background:rgb(128,203,234);cursor:pointer}td.unavailable{background:rgb(215,215,215)}td.selected{background:rgb(67,160,71)}#selection{padding:12px;background:#eef5e6;width:360px;min-height:40px}.el-dialog{position:fixed;left:240px;top:160px;width:360px;padding:25px;background:white;border:1px solid #aaa;box-shadow:0 0 0 2000px #0003;z-index:20}.el-dialog label{display:block;padding:10px}.el-message{position:fixed;top:20px;left:500px;background:#dff5d3;padding:15px;min-width:200px;z-index:40}</style>
+</head><body><h1>胡晓明网球场</h1><div id="dates"></div><table id="grid"></table><aside id="selection"></aside><button id="order" disabled>立即下单</button>
+<div class="el-dialog" role="dialog" hidden><h2>预订须知</h2><label><input type="checkbox">本人已认真阅读并同意预订须知</label><button id="submit" disabled>提交订单</button></div>
+<script>
+const fixture=__FIXTURE_CONFIG__;
+const time=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
+const date=n=>{const d=new Date(Date.now()+86400000*n),p=Object.fromEntries(time.formatToParts(d).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
+const record=(action,extra={})=>console.log('FIXTURE:'+JSON.stringify({action,...extra}));
+let selected=null,selectedDate=date(1);
+for(let i=0;i<8;i++){const b=document.createElement('button');b.textContent=date(i);b.onclick=()=>{selectedDate=b.textContent;record('date',{date:selectedDate});};document.getElementById('dates').append(b);}
+const table=document.getElementById('grid');const head=table.insertRow();head.insertCell().textContent='时间';for(let court=1;court<=8;court++)head.insertCell().textContent=`场地${court}`;
+for(let hour=7;hour<22;hour++){
+ const row=table.insertRow();row.insertCell().textContent=`${String(hour).padStart(2,'0')}:00`;
+ for(let court=1;court<=8;court++){
+  const cell=row.insertCell(),available=hour===19&&(court===6||fixture.multiple&&court===7);
+  cell.className=available?'available':'unavailable';
+  if(available)cell.onclick=()=>{document.querySelectorAll('td.selected').forEach(el=>el.className='available');cell.className='selected';selected={court:`场地${court}`,hour:`${String(hour).padStart(2,'0')}:00`};document.getElementById('selection').textContent=`${selectedDate} ${selected.court} ${selected.hour}-${String(hour+1).padStart(2,'0')}:00`;document.getElementById('order').disabled=false;record('select',selected);};
+ }
+}
+document.getElementById('order').onclick=()=>{document.querySelector('.el-dialog').hidden=false;record('open');};
+document.querySelector('input').onchange=e=>{document.getElementById('submit').disabled=!e.target.checked;};
+document.getElementById('submit').onclick=()=>{
+ record('submit',selected);document.querySelector('.el-dialog').hidden=true;
+ if(fixture.outcome==='success'||fixture.outcome==='failure'){const toast=document.createElement('div');toast.className='el-message';toast.textContent=fixture.outcome==='success'?'预约成功':'下单失败';document.body.append(toast);}
+};
+if(fixture.daily){const p=document.createElement('p');p.textContent='每日请求超过限制，无法获取';document.body.prepend(p);}
+if(fixture.frequent){const p=document.createElement('p');p.textContent='请求 过于\n频繁，请稍后再试';document.body.prepend(p);}
+record('loaded');
+</script></body></html>
