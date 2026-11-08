@@ -11,7 +11,7 @@
       <section class="card"><div class="section-title"><h2>监控条件</h2><span>发现退订空场及时提醒</span></div>
         <fieldset><legend>场馆</legend><div class="venue-options"><label class="check-tile"><input type="checkbox" name="venue" value="east">东区网球场</label><label class="check-tile"><input type="checkbox" name="venue" value="huxiaoming">胡晓明网球场</label></div></fieldset>
         <label class="field">胡晓明场地范围<select name="scope"><option value="all">全部都要</option><option value="indoor">只要室内场 · 6、7 号</option><option value="outdoor">只要室外场 · 1–5、8 号</option></select></label>
-        <label class="field">监控日期<textarea name="dateText" rows="2" spellcheck="false" placeholder="2026-11-01~2026-11-07"></textarea></label><p class="hint">可填单日、逗号分隔的多日或日期范围，最多 14 天。</p>
+        <label class="field">监控日期<textarea name="dateText" rows="2" spellcheck="false" placeholder="YYYY-MM-DD~YYYY-MM-DD"></textarea></label><p class="hint">默认按北京时间滚动更新 7 或 8 天。手填日期会固定，支持单日、多日（逗号分隔）或日期范围，最多 8 天。</p>
         <div class="two-col"><label class="field">开始时间<select name="start"></select></label><label class="field">结束时间<select name="end"></select></label></div>
         <label class="field">检查间隔<div class="input-unit"><input name="interval" type="number" min="10" step="1" required><span>秒</span></div></label>
         <div class="auto-box"><label class="switch-label"><input name="autoOrder" type="checkbox"><span>唯一空场自动下单</span></label><p>本轮恰好一个符合条件的空场时提交；多个空场只提醒。</p></div>

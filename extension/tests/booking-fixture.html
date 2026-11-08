@@ -7,6 +7,12 @@ const fixture=__FIXTURE_CONFIG__;
 const time=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
 const date=n=>{const d=new Date(Date.now()+86400000*n),p=Object.fromEntries(time.formatToParts(d).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`};
 const record=(action,extra={})=>console.log('FIXTURE:'+JSON.stringify({action,...extra}));
+function briefNotice(text) {
+ const notice=document.createElement('div');
+ notice.setAttribute('role','alertdialog');notice.textContent=text;
+ document.body.append(notice);
+ requestAnimationFrame(()=>notice.remove());
+}
 const template=document.body.cloneNode(true);template.querySelectorAll('script').forEach(el=>el.remove());
 function render(){
 document.body.replaceChildren(...template.cloneNode(true).childNodes);
@@ -25,11 +31,15 @@ for(let hour=7;hour<22;hour++){
   if(available)cell.onclick=()=>{document.querySelectorAll('td.selected').forEach(el=>el.className='available');cell.className='selected';selected={court:`场地${court}`,hour:`${String(hour).padStart(2,'0')}:00`};document.getElementById('selection').textContent=`${selectedDate} ${selected.court} ${selected.hour}-${String(hour+1).padStart(2,'0')}:00`;document.getElementById('order').disabled=false;record('select',selected);};
  }
 }
-document.getElementById('order').onclick=()=>{document.querySelector('.el-dialog').hidden=false;record('open');};
+document.getElementById('order').onclick=()=>{
+ document.querySelector('.el-dialog').hidden=false;record('open');
+ if(fixture.outcome==='unknown') briefNotice('校验单号 PRE-42');
+};
 document.querySelector('input').onchange=e=>{document.getElementById('submit').disabled=!e.target.checked;};
 document.getElementById('submit').onclick=()=>{
  record('submit',selected);document.querySelector('.el-dialog').hidden=true;
  if(fixture.outcome==='success'||fixture.outcome==='failure'){const toast=document.createElement('div');toast.className='el-message';toast.textContent=fixture.outcome==='success'?'预约成功':'下单失败';document.body.append(toast);}
+ if(fixture.outcome==='unknown') briefNotice('资格核验返回 E-412，请稍后查看结果');
 };
 if(fixture.daily){const p=document.createElement('p');p.textContent='每日请求超过限制，无法获取';document.body.prepend(p);}
 if(fixture.frequent){const p=document.createElement('p');p.textContent='请求 过于\n频繁，请稍后再试';document.body.prepend(p);}

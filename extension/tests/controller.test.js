@@ -99,6 +99,55 @@ test("损坏的配置回退默认值，不阻止插件启动",async()=>{
   const e=environment();e.local.settings={monitor:{interval:"bad"},rush:{times:null}};await e.controller.init();
   assert.equal(e.controller.settings.monitor.interval,20);assert.equal(e.controller.settings.rush.times.length,4);
 });
+test("旧版过期默认范围自动迁移，开始时计算日期并固定本次任务范围",async()=>{
+  const e=environment();
+  e.local.settings={monitor:{...e.monitor,dateText:"2026-10-31~2026-11-07",interval:25,autoOrder:false}};
+  e.setTime(Date.parse("2026-11-08T20:36:38+08:00"));
+  const {monitor}= (await e.controller.snapshot()).settings;
+  assert.equal(monitor.dateText,"2026-11-08~2026-11-15");
+  assert.equal(monitor.useDefaultDates,true);
+  assert.equal(monitor.interval,25);
+  assert.equal(monitor.autoOrder,false);
+  await e.controller.save("monitor",{...monitor,interval:30});
+  e.setTime(Date.parse("2026-11-08T21:00:00+08:00"));
+  assert.equal((await e.controller.snapshot()).settings.monitor.dateText,"2026-11-09~2026-11-15");
+  const {task}=await e.controller.start("monitor",{...monitor,interval:30});
+  assert.equal(task.config.dates[0],"2026-11-09");
+  assert.equal(task.config.interval,30);
+  e.setTime(Date.parse("2026-11-09T12:00:00+08:00"));
+  e.newController();
+  assert.equal((await e.controller.snapshot()).settings.monitor.dateText,"2026-11-09~2026-11-15");
+  assert.equal((await e.controller.stop()).settings.monitor.dateText,"2026-11-09~2026-11-16");
+});
+test("手填日期和仍有效的旧范围保持固定，恢复默认后重新滚动",async()=>{
+  const e=environment();
+  e.setTime(Date.parse("2026-11-08T10:00:00+08:00"));
+  e.local.settings={monitor:{...e.monitor,dateText:"2026-11-08~2026-11-14"}};
+  assert.equal((await e.controller.snapshot()).settings.monitor.useDefaultDates,false);
+  e.setTime(Date.parse("2026-11-15T10:00:00+08:00"));
+  e.newController();
+  assert.equal((await e.controller.snapshot()).settings.monitor.dateText,"2026-11-08~2026-11-14");
+  await e.controller.save("monitor",{...e.monitor,dateText:"2026-11-01,2026-11-03",useDefaultDates:false});
+  e.newController();
+  assert.equal((await e.controller.snapshot()).settings.monitor.dateText,"2026-11-01,2026-11-03");
+  const state=await e.controller.handle({type:"RESET",mode:"monitor"},{url:"chrome-extension://test/sidepanel.html"});
+  assert.equal(state.settings.monitor.useDefaultDates,true);
+  assert.equal(state.settings.monitor.dateText,"2026-11-15~2026-11-21");
+});
+test("保留旧版超过 8 天的监控设置，缩短日期后才能启动",async()=>{
+  const e=environment();
+  const saved={...e.monitor,dateText:"2026-10-31~2026-11-09",interval:25,autoOrder:false};
+  e.local.settings={monitor:saved};
+  const {monitor}=(await e.controller.snapshot()).settings;
+  assert.deepEqual(monitor,{...saved,useDefaultDates:false});
+  await assert.rejects(()=>e.controller.save("monitor",monitor),/最多监控 8 天/);
+  await assert.rejects(()=>e.controller.start("monitor",monitor),/最多监控 8 天/);
+  assert.equal(e.controller.task,null);
+  const {task}=await e.controller.start("monitor",{...monitor,dateText:"2026-10-31~2026-11-07"});
+  assert.equal(task.config.dates.length,8);
+  assert.equal(task.config.interval,25);
+  assert.equal(task.config.autoOrder,false);
+});
 test("页面等待仅接受当前命令，停止后不恢复旧操作",async()=>{
   const e=environment();await e.controller.start("monitor",e.monitor);const t=e.controller.task;
   t.pending={tabId:9,commandId:"cmd",documentId:"doc"};

@@ -5,7 +5,9 @@
   globalThis.__sjtuAgent=true;
   const P=globalThis.SJTU_PROBES, docId=crypto.randomUUID();
   let binding=null, highest=0, busy=false,executing=null;
+  let noticeCapture=null;
   const cache=new Map();
+  const orderActions=new Set(["select","open_order","accept","submit","result"]);
   const norm=s=>String(s||"").replace(/\s+/g,"").trim();
   const visible=el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return r.width>4&&r.height>4&&s.visibility!=="hidden"&&s.display!=="none";};
   const all=()=>Array.from(document.querySelectorAll("body *")).filter(visible);
@@ -16,7 +18,8 @@
     const reply=await chrome.runtime.sendMessage({type:"AGENT_WAIT",runId:executing?.runId,commandId:executing?.commandId,documentId:docId,delay:ms});
     if(!reply?.ok||!reply.data?.ok) throw Error("STALE_COMMAND");
   };
-  const notices=()=>norm(P.notice(args({})));
+  const noticeText=()=>P.notice(args({}));
+  const notices=()=>norm(noticeText());
   const failure=()=>{const t=notices();return /已被预定|请重新选择时段|预约失败|下单失败|提交失败|无法预约|已被预约|库存不足|请(?:先)?选择场地/.test(t)?t:"";};
   const success=()=>{const t=notices();return /预约成功|预订成功|下单成功|提交成功|订单提交成功/.test(t)?t:"";};
   const labels=date=>{const [y,m,d]=date.split("-");return [date,`${m}月${d}日`,`${Number(m)}月${Number(d)}日`];};
@@ -59,6 +62,49 @@
   }
   const selected=slot=>selectionSummary(slot).matches;
   function clearNotices() {for(const el of document.querySelectorAll(".el-message,.ant-message,.van-toast,.toast,[role=alert]")) el.remove();}
+  function visibleOrderNotices() {
+    const dialogs=document.querySelectorAll('[role="alertdialog"],.el-message-box,.el-notification,.ant-modal-confirm,.ant-notification-notice');
+    const text=[...noticeText().split("\n"),...Array.from(dialogs).filter(visible).map(el=>el.innerText)];
+    return text.map(value=>value.trim().replace(/\s+/g," ").slice(0,300)).filter(Boolean);
+  }
+  function stopNoticeCapture() {
+    noticeCapture?.observer.disconnect();
+    noticeCapture=null;
+  }
+  function trackOrderNotices(action) {
+    if(action==="select"||!orderActions.has(action)) stopNoticeCapture();
+    if(!orderActions.has(action)) return;
+    if(!noticeCapture) {
+      // On a new result document, visible alerts may already be the outcome.
+      const baseline=new Set(action==="result"?[]:visibleOrderNotices());
+      const seen=new Set();
+      const entries=[];
+      let count=0;
+      const collect=()=>{
+        if(count>=12) return;
+        const current=visibleOrderNotices();
+        for(const text of baseline) if(!current.includes(text)) baseline.delete(text);
+        for(const text of current) {
+          if(baseline.has(text)||seen.has(text)) continue;
+          seen.add(text);
+          entries.push({action:noticeCapture.action,text});
+          if(++count>=12) break;
+        }
+      };
+      const observer=new MutationObserver(collect);
+      noticeCapture={action,observer,entries,collect};
+      observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["class","style","hidden","role"]});
+    }
+    noticeCapture.collect();
+    noticeCapture.action=action;
+  }
+  function withOrderNotices(response) {
+    if(!noticeCapture) return response;
+    noticeCapture.collect();
+    // Keep the bounded list on the page so a restarted worker can read it again.
+    const orderNotices=[...noticeCapture.entries];
+    return orderNotices.length?{...response,orderNotices}:response;
+  }
   async function selectDate(date,message) {
     const wanted=labels(date).map(norm);
     const candidates=all().filter(el=>wanted.some(l=>norm(el.innerText).includes(l))).sort((a,b)=>norm(a.innerText).length-norm(b.innerText).length);
@@ -68,6 +114,7 @@
   }
   async function perform(m) {
     guard(m,{deadline:m.action!=="result"});
+    trackOrderNotices(m.action);
     const h=health();
     if(m.action==="prepare") {
       if(h.kind==="login") {const target=all().find(el=>norm(el.innerText)==="校内人员登录");if(target) click(target,m);return h;}
@@ -153,9 +200,9 @@
   chrome.runtime.onMessage.addListener((m,sender,respond)=>{
     if(sender.id!==chrome.runtime.id||sender.tab) return;
     if(m.type==="AGENT_HELLO") {respond({ok:true,documentId:docId,url:location.href,health:health()});return;}
-    if(m.type==="AGENT_CANCEL") {if(binding?.id===m.runId) binding.cancelled=true;respond({ok:true});return;}
+    if(m.type==="AGENT_CANCEL") {if(binding?.id===m.runId) {binding.cancelled=true;stopNoticeCapture();}respond({ok:true});return;}
     if(m.type==="AGENT_BIND") {
-      if(binding?.id!==m.runId) {binding={id:m.runId,deadline:m.deadline,cancelled:false,submitted:false};highest=0;cache.clear();}
+      if(binding?.id!==m.runId) {stopNoticeCapture();binding={id:m.runId,deadline:m.deadline,cancelled:false,submitted:false};highest=0;cache.clear();}
       respond({ok:true,documentId:docId});return;
     }
     if(m.type!=="AGENT_COMMAND") return;
@@ -163,9 +210,9 @@
     if(m.documentId!==docId||m.runId!==binding?.id||binding?.cancelled||m.seq<=highest||busy) {respond({ok:false,error:"STALE_COMMAND",documentId:docId});return;}
     highest=m.seq;busy=true;executing=m;
     perform(m).then(result=>{
-      const response={ok:true,documentId:docId,...result};cache.set(m.commandId,response);
+      const response=withOrderNotices({ok:true,documentId:docId,...result});cache.set(m.commandId,response);
       if(cache.size>64) cache.delete(cache.keys().next().value);respond(response);
-    }).catch(e=>respond({ok:false,error:e.message,documentId:docId})).finally(()=>{busy=false;});return true;
+    }).catch(e=>respond(withOrderNotices({ok:false,error:e.message,documentId:docId}))).finally(()=>{busy=false;});return true;
   });
   const announce=()=>chrome.runtime.sendMessage({type:"AGENT_READY",documentId:docId}).catch(()=>{});
   addEventListener("hashchange",announce);

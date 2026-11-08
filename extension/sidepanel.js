@@ -1,6 +1,7 @@
-import {VENUES,RUSH_DEFAULTS,allowedCourts,addDays,chinaDate,chinaTime} from "./rules.js";
+import {VENUES,allowedCourts,addDays,chinaDate,chinaTime} from "./rules.js";
 const $=id=>document.getElementById(id),monitor=$("monitor-form"),rush=$("rush-form");
 let mode="monitor",snapshot=null,initialized=false,saving=null,requestBusy=false,lastLogs="",lastSlots="";
+let useDefaultDates=true;
 const f=(form,name)=>form.elements.namedItem(name);
 function error(text="") {$("error").textContent=text;$("error").hidden=!text;}
 async function send(type,extra={}) {
@@ -27,13 +28,14 @@ function updateCourts(preferred=f(rush,"court").value) {
 }
 function apply(settings) {
   const m=settings.monitor,r=settings.rush;
+  useDefaultDates=m.useDefaultDates;
   for(const input of monitor.querySelectorAll('[name="venue"]')) input.checked=m.venues.includes(input.value);
   for(const name of ["scope","dateText","start","end","interval"]) f(monitor,name).value=m[name];f(monitor,"autoOrder").checked=m.autoOrder;
   for(const name of ["venue","scope","releaseTime"]) f(rush,name).value=r[name];updateCourts(r.court);
   $("time-rows").replaceChildren(...r.times.map(timeRow));numberRows();
 }
 function config() {
-  if(mode==="monitor") return {venues:[...monitor.querySelectorAll('[name="venue"]:checked')].map(el=>el.value),scope:f(monitor,"scope").value,dateText:f(monitor,"dateText").value,start:Number(f(monitor,"start").value),end:Number(f(monitor,"end").value),interval:Number(f(monitor,"interval").value),autoOrder:f(monitor,"autoOrder").checked};
+  if(mode==="monitor") return {venues:[...monitor.querySelectorAll('[name="venue"]:checked')].map(el=>el.value),scope:f(monitor,"scope").value,dateText:f(monitor,"dateText").value,useDefaultDates,start:Number(f(monitor,"start").value),end:Number(f(monitor,"end").value),interval:Number(f(monitor,"interval").value),autoOrder:f(monitor,"autoOrder").checked};
   const time=f(rush,"releaseTime").value;
   return {venue:f(rush,"venue").value,scope:f(rush,"scope").value,court:Number(f(rush,"court").value),releaseTime:time.length===5?time+":00":time,times:[...$("time-rows").querySelectorAll("select")].map(el=>el.value)};
 }
@@ -45,6 +47,10 @@ function setMode(next) {
 const statusNames={preparing:"准备中",login:"等待登录",manual:"需要操作",running:"运行中",waiting:"等待放场",stopped:"已停止",expired:"已结束",failed:"未抢到",success:"已下单",unknown:"请核对订单",limited:"请求已达上限"};
 function render(state) {
   snapshot=state;const t=state.task,active=Boolean(t?.active),cooldown=state.cooldown>Date.now();
+  if(initialized&&useDefaultDates&&state.settings.monitor.useDefaultDates) {
+    const field=f(monitor,"dateText"),dateText=state.settings.monitor.dateText;
+    if(field.value!==dateText) field.value=dateText;
+  }
   $("status-badge").textContent=cooldown?"冷却中":t?statusNames[t.status]||"运行中":"未开始";
   $("status-badge").className="badge"+(active&&!['manual','login'].includes(t.status)?" running":["unknown","limited","failed"].includes(t?.status)?" error":"");
   $("status-text").textContent=cooldown?`每日请求额度已用完，${chinaDate(state.cooldown)} 00:10 后可再试`:t?.message||"设置条件后即可开始";
@@ -80,8 +86,10 @@ async function refresh() {
   try {const state=await send("GET_STATE");if(!initialized) {apply(state.settings);initialized=true;const stored=await chrome.storage.local.get("uiMode");setMode(stored.uiMode==="rush"?"rush":"monitor");}render(state);}catch(e) {error(e.message);}
 }
 async function act(type,extra={}) {requestBusy=true;if(snapshot) render(snapshot);error();try {const state=await send(type,extra);render(state);return state;}catch(e){error(e.message);return null;}finally{requestBusy=false;if(snapshot) render(snapshot);}}
-function changed() {
-  if(!initialized) return;clearTimeout(saving);const changedMode=mode,changedConfig=config();
+function changed(event) {
+  if(!initialized) return;
+  if(event?.target===f(monitor,"dateText")) useDefaultDates=false;
+  clearTimeout(saving);const changedMode=mode,changedConfig=config();
   saving=setTimeout(async()=>{try{const state=await send("SAVE_SETTINGS",{mode:changedMode,config:changedConfig});error();render(state);}catch(e){error(e.message);}},500);
 }
 for(const form of [monitor,rush]) {form.addEventListener("submit",e=>e.preventDefault());form.addEventListener("input",changed);form.addEventListener("change",changed);}

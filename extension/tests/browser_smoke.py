@@ -64,6 +64,22 @@ def run():
             panel.screenshot(path=str(OUT / "timeout.png"), full_page=True)
             print("UI_ERROR", panel.locator("#error").text_content(), "PAGE_ERRORS", errors, "FIXTURE_EVENTS", events[-20:], flush=True)
             raise AssertionError("Timed out: " + json.dumps(state(), ensure_ascii=False))
+        panel.fill("[name=interval]", "25")
+        saved = wait_for(lambda s: s["settings"]["monitor"]["interval"] == 25)
+        checked("editing the interval keeps automatic dates", saved["settings"]["monitor"]["useDefaultDates"])
+        next_day = worker.evaluate("""() => {
+          const realNow = Date.now;
+          const nextDay = realNow() + 2 * 86400000;
+          globalThis.restoreFixtureClock = () => { Date.now = realNow; };
+          Date.now = () => nextDay;
+          return nextDay;
+        }""")
+        try:
+            expected = panel.evaluate("async now => (await import('./rules.js')).defaultDateText(now)", next_day)
+            panel.wait_for_function("date => document.querySelector('[name=dateText]').value === date", arg=expected)
+            checked("open sidepanel shows the new default range without a reload", expected != saved["settings"]["monitor"]["dateText"])
+        finally:
+            worker.evaluate("() => restoreFixtureClock()")
         # Home contains both recommendation names, but is not a booking page.
         home=context.new_page();home.goto('https://sports.sjtu.edu.cn/pc/#/')
         response=worker.evaluate('''async()=>{
@@ -132,8 +148,9 @@ def run():
         checked("monitor runs with sidepanel document closed", sum(e["action"] == "date" for e in events) > before)
         panel = context.new_page();panel.goto(panel_url)
         panel.wait_for_function("() => document.querySelector('[name=dateText]').value.length > 0")
+        checked("hand-entered date persists after reopening the sidepanel", panel.locator("[name=dateText]").input_value() == date)
         send("STOP")
-        # Unknown submission result: the actual page is not clicked a second time.
+        # Short, unfamiliar notices survive in the log without authorizing a retry.
         config["outcome"] = "unknown";school.reload();events.clear()
         raw = state()["settings"]["monitor"]
         send("START", mode="monitor", config=raw)
@@ -142,6 +159,9 @@ def run():
         unknown = wait_for(lambda s: s["task"]["autoHalted"])
         checked("unknown outcome halts automatic orders", "不明确" in unknown["task"]["message"])
         checked("unknown outcome submitted fixture only once", sum(e["action"] == "submit" for e in events) == 1)
+        texts = [row["text"] for row in unknown["task"]["logs"]]
+        checked("brief pre-submit notice is logged with the booking step", "打开下单时的学校提示：校验单号 PRE-42" in texts)
+        checked("brief unknown submit notice is logged after worker restart", "提交订单时的学校提示：资格核验返回 E-412，请稍后查看结果" in texts)
         send("STOP")
         # An unrelated selection must not be silently included in an order.
         config["outcome"]="success";school.reload();events.clear()

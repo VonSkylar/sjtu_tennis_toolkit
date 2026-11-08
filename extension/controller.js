@@ -1,7 +1,9 @@
-import {SCHOOL,VENUES,RUSH_DEFAULTS,monitorDefaults,validateConfig,chinaTime,chinaDate,cooldownUntil,courtOrder,filterSlots,slotKey,slotText,autoOrderCandidate,taskExpired,isVenueUrl} from "./rules.js";
+import {SCHOOL,VENUES,RUSH_DEFAULTS,monitorDefaults,defaultDateText,validateConfig,chinaTime,chinaDate,cooldownUntil,courtOrder,filterSlots,slotKey,slotText,autoOrderCandidate,taskExpired,isVenueUrl} from "./rules.js";
 
 const clone=value=>structuredClone(value);
 const uid=()=>crypto.randomUUID();
+const automaticMonitorDefaults=now=>({...monitorDefaults(now),useDefaultDates:true});
+const orderNoticeStages={select:"选场",open_order:"打开下单",accept:"确认须知",submit:"提交订单",result:"核对结果"};
 export class Controller {
   constructor(api,{now=()=>Date.now(),setTimer=(fn,ms)=>setTimeout(fn,ms),clearTimer=id=>clearTimeout(id)}={}) {
     this.api=api;this.now=now;this.setTimer=setTimer;this.clearTimer=clearTimer;
@@ -10,8 +12,25 @@ export class Controller {
   async init() {
     if(!this.initializing) this.initializing=(async()=>{
       const [local,session]=await Promise.all([this.api.storage.local.get(["settings","cooldown"]),this.api.storage.session.get("task")]);
-      this.settings={monitor:monitorDefaults(this.now()),rush:clone(RUSH_DEFAULTS),...local.settings};
-      for(const mode of ["monitor","rush"]) {try {validateConfig(mode,this.settings[mode],this.now());}catch {this.settings[mode]=mode==="monitor"?monitorDefaults(this.now()):clone(RUSH_DEFAULTS);}}
+      const now=this.now();
+      const defaults={monitor:automaticMonitorDefaults(now),rush:clone(RUSH_DEFAULTS)};
+      this.settings={...defaults,...local.settings};
+      let migrated=false;
+      for(const mode of ["monitor","rush"]) {
+        const saved=this.settings[mode];
+        try {
+          // Keep longer ranges from older versions visible for the user to edit.
+          const config=validateConfig(mode,saved,now,{maxMonitorDates:14});
+          if(mode==="monitor"&&saved.useDefaultDates===undefined) {
+            // Old settings did not distinguish auto-filled dates from manual dates.
+            const {dates}=config,last=dates.at(-1);
+            saved.useDefaultDates=(dates.length===7||dates.length===8)
+              &&saved.dateText===`${dates[0]}~${last}`&&last<chinaDate(now);
+            migrated=true;
+          }
+        } catch {this.settings[mode]=defaults[mode];}
+      }
+      if(migrated) await this.api.storage.local.set({settings:this.settings});
       this.cooldown=Number.isFinite(local.cooldown)?local.cooldown:0;this.task=session.task||null;
       if(this.task?.active) this.schedule(Math.max(this.now(),this.task.nextAt||0));
     })();
@@ -29,12 +48,21 @@ export class Controller {
     this.broadcast();
   }
   broadcast() {this.api.runtime.sendMessage({type:"STATE_CHANGED"}).catch(()=>{});}
-  async snapshot() {await this.init();return {settings:clone(this.settings),task:clone(this.task),cooldown:this.cooldown,now:this.now()};}
+  async snapshot() {
+    await this.init();
+    const now=this.now(),settings=clone(this.settings),task=clone(this.task);
+    if(settings.monitor.useDefaultDates) {
+      settings.monitor.dateText=task?.active&&task.mode==="monitor"?task.config.dateText:defaultDateText(now);
+    }
+    return {settings,task,cooldown:this.cooldown,now};
+  }
   async save(mode,raw) {
     await this.init();const config=validateConfig(mode,raw,this.now());
     if(this.task?.active&&this.task.mode===mode&&mode==="rush") throw Error("抢场运行中不能修改配置，请先停止");
     if(this.task?.active&&this.task.mode===mode&&this.task.attempt) throw Error("正在处理订单，待结果明确后再修改条件");
-    this.settings[mode]=clone(raw);await this.api.storage.local.set({settings:this.settings});
+    const settings=clone(raw);
+    if(mode==="monitor") settings.useDefaultDates=raw.useDefaultDates===true;
+    this.settings[mode]=settings;await this.api.storage.local.set({settings:this.settings});
     if(this.task?.active&&mode==="monitor"&&this.task.mode===mode) {
       const t=this.task;t.config=config;t.revision++;t.cursor={};this.resetRound(t);t.phase="monitor";
       await this.stopAlarm();this.log(t,"监控条件已更新，立即重新检查");t.nextAt=this.now();await this.persist(t);this.schedule(t.nextAt);
@@ -44,7 +72,9 @@ export class Controller {
   async start(mode,raw) {
     await this.init();if(this.task?.active||this.starting||this.stopping) throw Error("已有任务正在运行或切换，请先等待停止完成");
     if(this.cooldown>this.now()) throw Error("今日请求额度已达上限，请等待冷却结束");
-    const config=validateConfig(mode,raw,this.now());if(mode==="rush"&&config.deadline<=this.now()) throw Error("今天的抢场窗口已结束，请修改开始时间或明天再试");
+    const now=this.now();
+    if(mode==="monitor"&&raw?.useDefaultDates===true) raw={...raw,dateText:defaultDateText(now)};
+    const config=validateConfig(mode,raw,now);if(mode==="rush"&&config.deadline<=now) throw Error("今天的抢场窗口已结束，请修改开始时间或明天再试");
     this.starting=true;
     try {
     await this.save(mode,raw);await this.stopAlarm();
@@ -134,6 +164,15 @@ export class Controller {
       const result=await this.send(tabId,{type:"AGENT_COMMAND",runId:t.id,commandId,seq,documentId:hello.documentId,action,...data,venueId:VENUES[key].id,venueName:VENUES[key].name});
       this.check(t);
       if(result?.documentId!==hello.documentId) return {kind:"loading",message:"页面已刷新，等待重新连接"};
+      if(t.attempt&&result.orderNotices?.length) {
+        const logged=t.attempt.loggedNotices??=[];
+        for(const {action:stage,text} of result.orderNotices) {
+          const line=`${orderNoticeStages[stage]}时的学校提示：${text}`;
+          if(logged.includes(line)) continue;
+          logged.push(line);
+          this.log(t,line);
+        }
+      }
       if(!result.ok) {if(result.error==="DEADLINE") return {kind:"expired"};return {kind:"loading",message:result.error||"页面操作未完成"};}
       return result;
     }catch(error) {this.check(t);return {kind:"loading",message:"页面已跳转或暂未响应，等待重新连接"};}
@@ -357,7 +396,7 @@ export class Controller {
       case "STOP_ALARM": await this.stopAlarm();return this.snapshot();
       case "RESUME": return this.resume();
       case "OPEN_VENUE": await this.openVenue(m.venue);return this.snapshot();
-      case "RESET": await this.save(m.mode,m.mode==="rush"?clone(RUSH_DEFAULTS):monitorDefaults(this.now()));return this.snapshot();
+      case "RESET": await this.save(m.mode,m.mode==="rush"?clone(RUSH_DEFAULTS):automaticMonitorDefaults(this.now()));return this.snapshot();
       default: throw Error("未知控制命令");
     }
   }

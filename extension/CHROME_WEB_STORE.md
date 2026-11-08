@@ -4,7 +4,7 @@
 
 1. 用你选定的 Google 账号打开 [Chrome 商店开发者后台](https://chrome.google.com/webstore/devconsole/)。若尚未注册，阅读开发者条款、支付一次性注册费，验证联系邮箱，并启用 Google 两步验证。请在自己的浏览器完成这些步骤。
 2. 在后台的 **账号 → 受信任测试人员** 中，只填写允许安装的 Google 账号邮箱。如果 Windows 和 Mac 使用同一个 Google 账号，只需配置这一个账号。该名单属于发布者账号；如果后台已有其他项目或测试人员，先核对名单范围再提交。
-3. 新建项目并上传 `sjtu-tennis-extension-1.0.2-chrome-web-store.zip`，无需解压。商店资料填写下方文案，并上传图标和截图。若拿到的是提交资料合集，先解压合集；上传其中的扩展 ZIP，图片在 `listing-assets/`。仓库本地生成的扩展 ZIP 在 `dist/`，图片在 `dist/chrome-web-store/`。申请审核前在 **分发 → 可见性** 选 **私有 → 仅当前发布者的受信任测试人员**，保持免费。若 Windows 和 Mac 的商店地区不同，可在私有前提下保留所有地区。
+3. 新建项目并上传 `sjtu-tennis-extension-1.0.5-chrome-web-store.zip`，无需解压。商店资料填写下方文案，并上传图标和截图。若拿到的是提交资料合集，先解压合集；上传其中的扩展 ZIP，图片在 `listing-assets/`。仓库本地生成的扩展 ZIP 在 `dist/`，图片在 `dist/chrome-web-store/`。申请审核前在 **分发 → 可见性** 选 **私有 → 仅当前发布者的受信任测试人员**，保持免费。若 Windows 和 Mac 的商店地区不同，可在私有前提下保留所有地区。
 4. 提交审核。审核通过并发布后，复制该项目的商店链接。用获准的 Google 账号在 Windows 和 Mac 各打开链接安装一次。原来加载了开发版的 Chrome，先停止任务、记下配置并停用开发版，再使用商店版。
 
 官方说明：[开发者注册](https://developer.chrome.com/docs/webstore/register) · [账号和测试人员](https://developer.chrome.com/docs/webstore/set-up-account) · [私有分发](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution) · [提交审核](https://developer.chrome.com/docs/webstore/publish)
