@@ -146,7 +146,7 @@ export class Controller {
   }
   async notify(t,message,sound=true) {
     if(this.task!==t||t.status==="stopped") return;
-    try {await this.api.notifications.create("sjtu-result",{type:"basic",iconUrl:this.api.runtime.getURL("icons/icon128.png"),title:"交我办网球助手",message});}catch {this.log(t,"系统通知不可用，请查看插件状态和学校页面");}
+    try {await this.api.notifications.create("sjtu-result",{type:"basic",iconUrl:this.api.runtime.getURL("icons/icon128.png"),title:"网球预约助手",message});}catch {this.log(t,"系统通知不可用，请查看插件状态和学校页面");}
     if(sound) {
       try {
         if(this.task!==t||t.status==="stopped") return;

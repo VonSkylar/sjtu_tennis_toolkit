@@ -1,15 +1,17 @@
-# 交我办网球助手 · 浏览器插件
+# 网球预约助手 · 浏览器插件
 
 在 Windows 或 Mac 的 **Chrome / Microsoft Edge 120 及以上版本**中使用。安装后直接在当前浏览器运行，不需要 Python、Playwright、本地服务或服务器。首版不支持手机和 Safari。
 
 ## 安装（第一次约几步操作）
 
-1. 把 `sjtu-tennis-extension-1.0.1.zip` 解压到一个长期保留的文件夹。
+1. 把 `sjtu-tennis-extension-1.0.2.zip` 解压到一个长期保留的文件夹。
 2. Chrome 打开 `chrome://extensions`；Edge 打开 `edge://extensions`。
 3. 开启“开发者模式”，点击“加载已解压的扩展程序”，选择**里面有 `manifest.json` 的文件夹**。
-4. 在浏览器工具栏的扩展菜单中找到“交我办网球助手”，固定图标，点击打开侧边栏。
+4. 在浏览器工具栏的扩展菜单中找到“网球预约助手”，固定图标，点击打开侧边栏。
 
 也可以直接加载源码仓库的 `extension` 文件夹。不要删除或移动已经加载的文件夹；更新时替换该目录内容，再到扩展管理页点击“重新加载”。扩展更新后需要重新开始任务。
+
+Chrome 商店版按[私有发布说明](CHROME_WEB_STORE.md)提交。审核通过后，白名单内的 Google 账号可通过商店链接安装，之后由 Chrome 自动更新。商店版和开发者模式版本各有自己的本地设置；切换时请先停止并停用旧版，再在商店版重新设置。
 
 ### 从 1.0.0 更新到 1.0.1
 
@@ -61,6 +63,8 @@
 
 网站权限仅为 `https://sports.sjtu.edu.cn/*`。其他权限分别用于本地配置、任务恢复、侧边栏、通知与提示音。全部执行代码随安装包提供。
 
+完整说明见[隐私政策](PRIVACY.md)。
+
 ## 验证范围
 
 开发测试使用独立临时 Chromium 配置和学校页面夹具，不使用用户浏览器资料，也不向学校提交真实订单。覆盖规则、真实扩展消息传递、选中与提交、刷新恢复、后台重启、关闭界面继续运行及不明确结果保护。
@@ -76,6 +80,7 @@ node --test extension/tests/rules.test.js extension/tests/controller.test.js ext
 python -X utf8 extension/tests/browser_smoke.py
 python -m unittest discover -s tests
 python -X utf8 extension/tools/package.py
+python -X utf8 extension/tools/package.py --store
 ```
 
-`tools/sync_probes.py` 将旧版共享 JavaScript 探针转成插件内的静态可执行函数；仅在维护探针时运行。打包脚本不包含开发工具、测试或 Python 文件。
+`tools/sync_probes.py` 将旧版共享 JavaScript 探针转成插件内的静态可执行函数；仅在维护探针时运行。打包脚本不包含开发工具、测试或 Python 文件。`--store` 生成商店专用 ZIP，上传时无需解压。

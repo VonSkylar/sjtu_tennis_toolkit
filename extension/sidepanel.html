@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>交我办网球助手</title><link rel="stylesheet" href="sidepanel.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>网球预约助手</title><link rel="stylesheet" href="sidepanel.css"></head>
 <body>
-  <header class="brand"><img src="icons/icon48.png" width="36" height="36" alt=""><div><h1>交我办网球助手</h1><p>选好时间，把等待交给助手</p></div><span class="local">本机运行</span></header>
+  <header class="brand"><img src="icons/icon48.png" width="36" height="36" alt=""><div><h1>网球预约助手</h1><p>适用于上海交大 · 非官方</p></div><span class="local">本机运行</span></header>
   <main>
     <nav class="mode-tabs" aria-label="功能模式"><button id="mode-monitor" class="selected" aria-pressed="true">空场监控</button><button id="mode-rush" aria-pressed="false">定时抢场</button></nav>
     <section class="status-card" aria-live="polite"><div class="status-top"><span class="eyebrow">当前任务</span><span id="status-badge" class="badge">未开始</span></div><p id="status-text">设置条件后即可开始</p><div class="status-meta"><span id="status-detail">关闭侧边栏不会停止任务</span><span id="clock">北京时间</span></div><button id="resume" class="outline" hidden>检查并继续</button></section>
@@ -23,13 +23,13 @@
         <div class="two-col"><label class="field">场地范围<select name="scope"><option value="indoor">只要室内场</option><option value="outdoor">只要室外场</option><option value="all">全部都要</option></select></label><label class="field">优先场地<select name="court"></select></label></div>
         <div class="two-col"><label class="field">开始抢场<input name="releaseTime" type="time" step="1" required></label><div class="target-date"><span>目标日期</span><strong id="target-date"></strong><small>自动计算七天后</small></div></div>
         <div class="section-title time-title"><h3>时段优先级</h3><span>每次预约一小时</span></div><div id="time-rows"></div><button id="add-time" type="button" class="add-time">＋ 添加备选时段</button>
-        <p class="hint">先尝试第一时段及优先场地，失败后继续尝试备选。放场后一分钟结束。</p>
+        <p class="hint">开始后将按时段和场地优先级自动提交预约。放场后一分钟结束。</p>
       </section>
     </form>
     <div class="actions"><button id="start" class="primary">开始监控</button><button id="stop" class="outline" disabled>停止任务</button></div>
     <div class="utility"><button id="open-venue" class="text-button">打开预约页 ↗</button><button id="reset" class="text-button">恢复默认</button><button id="stop-alarm" class="text-button" disabled>停止报警</button></div>
     <section class="card results"><div class="section-title"><h2>符合条件的空场</h2><span id="slot-count">0 个</span></div><div id="slots"><p class="empty">开始监控后，符合条件的场次会显示在这里。</p></div></section>
     <section class="card log-card"><div class="section-title"><h2>运行记录</h2><span id="last-check">尚未检查</span></div><div id="logs" class="logs" role="log" aria-label="运行记录"><p class="empty">准备就绪，等待开始。</p></div></section>
-    <footer><p>预约页保持打开，设备保持联网和唤醒。</p><p>全部时间均为北京时间 · 有效设置自动保存</p></footer>
+    <footer><p>预约页保持打开，设备保持联网和唤醒。</p><p>全部时间均为北京时间 · 有效设置自动保存在本机</p><p><a href="https://github.com/VonSkylar/sjtu_tennis_toolkit/blob/main/extension/PRIVACY.md" target="_blank" rel="noopener noreferrer">隐私政策</a></p></footer>
   </main><script type="module" src="sidepanel.js"></script>
 </body></html>
