@@ -1,6 +1,7 @@
 // Ported from the existing Python browser probes; see tools/sync_probes.py.
 globalThis.SJTU_PROBES = (() => {
-const geom = {"minVisiblePixels": 4, "paddingX": 20, "paddingTop": 20, "paddingBottom": 80, "cellMinWidth": 25, "cellMaxWidth": 90, "cellMinHeight": 20, "cellMaxHeight": 70, "maxRowDistance": 45, "maxColumnDistance": 60, "cellParentDepth": 5, "cellProbeMaxWidth": 120, "cellProbeMaxHeight": 90, "cellProbeCenterTolerance": 8, "scannerChainDepth": 4, "selectableBlueMinBlue": 185, "selectableBlueMinGreen": 120, "selectableBlueMaxRed": 210, "selectableBlueMinBlueMinusRed": 30, "selectableBlueMinBlueMinusGreen": 8, "selectedGreenMinGreen": 130, "selectedGreenMaxRed": 120, "selectedGreenMaxBlue": 180, "selectedGreenMinGreenMinusRed": 45, "greyMaxChannelDelta": 18, "greyMinRed": 115, "greyMaxRed": 245, "courtCount": 8};
+const geom = {"minVisiblePixels": 4, "paddingX": 20, "paddingTop": 20, "paddingBottom": 80, "cellMinWidth": 25, "cellMaxWidth": 90, "cellMinHeight": 20, "cellMaxHeight": 70, "maxRowDistance": 45, "maxColumnDistance": 60, "cellParentDepth": 5, "cellProbeMaxWidth": 120, "cellProbeMaxHeight": 90, "cellProbeCenterTolerance": 8, "scannerChainDepth": 4, "selectableBlueMinBlue": 185, "selectableBlueMinGreen": 120, "selectableBlueMaxRed": 210, "selectableBlueMinBlueMinusRed": 30, "selectableBlueMinBlueMinusGreen": 8, "selectedGreenMinGreen": 130, "selectedGreenMaxRed": 120, "selectedGreenMaxBlue": 180, "selectedGreenMinGreenMinusRed": 45, "greyMaxChannelDelta": 18, "greyMinRed": 115, "greyMaxRed": 245};
+geom.courtCount = globalThis.SJTU_BOOKING_RULES.courtCount;
 
   const visible = (el) => {
     const rect = el.getBoundingClientRect();

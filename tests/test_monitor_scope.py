@@ -7,7 +7,18 @@ from sjtu_tennis_toolkit.config import (
     HUXIAOMING_COURT_SCOPE_OUTDOOR,
     court_matches_monitor_scope,
     parse_config,
+    parse_dates,
 )
+
+
+class MonitorDateLimitTest(unittest.TestCase):
+    def test_range_and_date_list_enforce_eight_distinct_dates(self) -> None:
+        dates = [f"2026-11-{day:02d}" for day in range(1, 10)]
+        self.assertEqual(len(parse_dates("2026-11-01~2026-11-08")), 8)
+        self.assertEqual(len(parse_dates(",".join(dates[:8] + dates[:1]))), 8)
+        for text in ("2026-11-01~2026-11-09", ",".join(dates)):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "最多监控 8 天"):
+                parse_dates(text)
 
 
 class MonitorCourtScopeTest(unittest.TestCase):

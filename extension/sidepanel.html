@@ -10,10 +10,10 @@
     <form id="monitor-form" autocomplete="off">
       <section class="card"><div class="section-title"><h2>监控条件</h2><span>发现退订空场及时提醒</span></div>
         <fieldset><legend>场馆</legend><div class="venue-options"><label class="check-tile"><input type="checkbox" name="venue" value="east">东区网球场</label><label class="check-tile"><input type="checkbox" name="venue" value="huxiaoming">胡晓明网球场</label></div></fieldset>
-        <label class="field">胡晓明场地范围<select name="scope"><option value="all">全部都要</option><option value="indoor">只要室内场 · 6、7 号</option><option value="outdoor">只要室外场 · 1–5、8 号</option></select></label>
-        <label class="field">监控日期<textarea name="dateText" rows="2" spellcheck="false" placeholder="YYYY-MM-DD~YYYY-MM-DD"></textarea></label><p class="hint">默认按北京时间滚动更新 7 或 8 天。手填日期会固定，支持单日、多日（逗号分隔）或日期范围，最多 8 天。</p>
+        <label class="field">胡晓明场地范围<select name="scope"><option value="all">全部都要</option><option value="indoor">只要室内场</option><option value="outdoor">只要室外场</option></select></label>
+        <label class="field">监控日期<textarea name="dateText" rows="2" spellcheck="false" placeholder="YYYY-MM-DD~YYYY-MM-DD"></textarea></label><p class="hint" id="monitor-date-hint"></p>
         <div class="two-col"><label class="field">开始时间<select name="start"></select></label><label class="field">结束时间<select name="end"></select></label></div>
-        <label class="field">检查间隔<div class="input-unit"><input name="interval" type="number" min="10" step="1" required><span>秒</span></div></label>
+        <label class="field">检查间隔<div class="input-unit"><input name="interval" type="number" step="1" required><span>秒</span></div></label>
         <div class="auto-box"><label class="switch-label"><input name="autoOrder" type="checkbox"><span>唯一空场自动下单</span></label><p>本轮恰好一个符合条件的空场时提交；多个空场只提醒。</p></div>
       </section>
     </form>
@@ -21,9 +21,9 @@
       <section class="card"><div class="section-title"><h2>抢场设置</h2><span>按你的优先顺序尝试</span></div>
         <label class="field">场馆<select name="venue"><option value="huxiaoming">胡晓明网球场</option><option value="east">东区网球场</option></select></label>
         <div class="two-col"><label class="field">场地范围<select name="scope"><option value="indoor">只要室内场</option><option value="outdoor">只要室外场</option><option value="all">全部都要</option></select></label><label class="field">优先场地<select name="court"></select></label></div>
-        <div class="two-col"><label class="field">开始抢场<input name="releaseTime" type="time" step="1" required></label><div class="target-date"><span>目标日期</span><strong id="target-date"></strong><small>自动计算七天后</small></div></div>
+        <div class="two-col"><label class="field">开始抢场<input name="releaseTime" type="time" step="1" required></label><div class="target-date"><span>目标日期</span><strong id="target-date"></strong><small id="target-date-hint"></small></div></div>
         <div class="section-title time-title"><h3>时段优先级</h3><span>每次预约一小时</span></div><div id="time-rows"></div><button id="add-time" type="button" class="add-time">＋ 添加备选时段</button>
-        <p class="hint">开始后将按时段和场地优先级自动提交预约。放场后一分钟结束。</p>
+        <p class="hint" id="rush-window-hint"></p>
       </section>
     </form>
     <div class="actions"><button id="start" class="primary">开始监控</button><button id="stop" class="outline" disabled>停止任务</button></div>

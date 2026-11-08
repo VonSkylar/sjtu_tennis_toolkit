@@ -214,7 +214,7 @@ export class Controller {
     }
     if(result.kind==="daily_limit") {
       this.cooldown=cooldownUntil(this.now());await this.api.storage.local.set({cooldown:this.cooldown});
-      await this.finish(t,"limited",`每日请求额度已达上限，冷却至 ${chinaDate(this.cooldown)} 00:10`);return false;
+      await this.finish(t,"limited",`每日请求额度已达上限，冷却至 ${chinaDate(this.cooldown)} ${chinaTime(this.cooldown).slice(0,5)}`);return false;
     }
     if(result.kind==="expired") {await this.finish(t,"expired","抢场窗口已结束");return false;}
     if(result.kind==="manual") {t.status="manual";t.message=result.message;this.log(t,result.message);t.nextAt=this.now()+30000;await this.notify(t,result.message,false);return false;}
@@ -230,7 +230,7 @@ export class Controller {
     if(t.nextAt>this.now()) {this.schedule(t.nextAt);return;}
     this.busy=true;
     try {
-      if(taskExpired(t,this.now())&&t.attempt?.stage!=="result") {await this.finish(t,"expired","一分钟抢场窗口已结束");return;}
+      if(taskExpired(t,this.now())&&t.attempt?.stage!=="result") {await this.finish(t,"expired","抢场窗口已结束");return;}
       if(t.status==="manual") {
         if(taskExpired(t,this.now())&&t.attempt?.stage==="result") {await this.unknown(t,"验证未完成且抢场窗口已结束，请核对学校订单");return;}
         t.nextAt=this.now()+30000;return;

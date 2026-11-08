@@ -2,23 +2,33 @@
 
 from __future__ import annotations
 
+import json
+from importlib.resources import files
+
+BOOKING_RULES = json.loads(
+    files("sjtu_tennis_toolkit").joinpath("booking_rules.json").read_text(encoding="utf-8")
+)
+
 # ---------------------------------------------------------------------------
 # Monitoring defaults
 # ---------------------------------------------------------------------------
-DEFAULT_CHECK_INTERVAL_SECONDS = 20
-MIN_CHECK_INTERVAL_SECONDS = 10
+DEFAULT_MONITOR_START_HOUR = BOOKING_RULES["defaultMonitorStartHour"]
+DEFAULT_CHECK_INTERVAL_SECONDS = BOOKING_RULES["defaultCheckIntervalSeconds"]
+MIN_CHECK_INTERVAL_SECONDS = BOOKING_RULES["minCheckIntervalSeconds"]
 SETUP_SCAN_SECONDS = 1
 
 # ---------------------------------------------------------------------------
 # Court hours
 # ---------------------------------------------------------------------------
-OPEN_HOUR = 7
-CLOSE_HOUR = 22
+OPEN_HOUR = BOOKING_RULES["openHour"]
+CLOSE_HOUR = BOOKING_RULES["closeHour"]
 
 # ---------------------------------------------------------------------------
 # Date visibility
 # ---------------------------------------------------------------------------
-EIGHTH_DAY_RELEASE_HOUR = 12
+RUSH_TARGET_DAYS_AHEAD = BOOKING_RULES["bookingDaysAhead"]
+MAX_MONITOR_DATES = RUSH_TARGET_DAYS_AHEAD + 1
+EIGHTH_DAY_RELEASE_HOUR = BOOKING_RULES["releaseHour"]
 
 # ---------------------------------------------------------------------------
 # Browser version
@@ -32,7 +42,7 @@ DEBUG_PAGE_LIST_SECONDS = 60
 #: The booking grid lags behind a rejected submit, so the same cell can look
 #: "the only free one" again on the very next round. Wait this long before
 #: submitting the same cell twice.
-AUTO_ORDER_RETRY_COOLDOWN_SECONDS = 60
+AUTO_ORDER_RETRY_COOLDOWN_SECONDS = BOOKING_RULES["autoOrderRetryCooldownSeconds"]
 
 # ---------------------------------------------------------------------------
 # Booking grid geometry
@@ -43,9 +53,9 @@ AUTO_ORDER_RETRY_COOLDOWN_SECONDS = 60
 # ``geom`` argument of the call (see browser/js_snippets.py).
 #
 #: The booking grid always shows this many court columns.
-TENNIS_COURT_COUNT = 8
+TENNIS_COURT_COUNT = BOOKING_RULES["courtCount"]
 #: Minimum number of date tabs the page must render before it counts as loaded.
-DATE_TAB_READY_COUNT = 7
+DATE_TAB_READY_COUNT = BOOKING_RULES["dateTabReadyCount"]
 
 #: Pixel values handed to every probe as its ``geom`` argument.
 BOOKING_GRID_GEOMETRY: dict[str, int] = {

@@ -1,17 +1,28 @@
+import "./booking-rules.js";
 import "./route.js";
-export const SCHOOL = "https://sports.sjtu.edu.cn";
-export const VENUES = {
-  east: {key:"east", name:"东区网球场", id:"3466293b-a7d8-45be-a918-8526e3bed4c5"},
-  huxiaoming: {key:"huxiaoming", name:"胡晓明网球场", id:"0c6edc93-87ac-41b0-9895-6b66fda93fe5"},
-};
-for (const venue of Object.values(VENUES)) {
-  venue.url = `${SCHOOL}/pc/?locale=zh#/apointmentDetails/1/${venue.id}/%25E5%2585%25A8%25E9%2583%25A8/0`;
-}
+const bookingRules = globalThis.SJTU_BOOKING_RULES;
+export const {
+  schoolOrigin:SCHOOL,
+  openHour:OPEN_HOUR,
+  closeHour:CLOSE_HOUR,
+  bookingDaysAhead:RUSH_TARGET_DAYS_AHEAD,
+  rushAttemptWindowSeconds:RUSH_ATTEMPT_WINDOW_SECONDS,
+  maxRushTimeSlots:MAX_RUSH_TIME_SLOTS,
+  minCheckIntervalSeconds:MIN_CHECK_INTERVAL_SECONDS,
+} = bookingRules;
+export const MAX_MONITOR_DATES = RUSH_TARGET_DAYS_AHEAD + 1;
+export const VENUES = Object.fromEntries(Object.entries(bookingRules.venues).map(([key,venue])=>[
+  key, {...venue,key,url:`${SCHOOL}/pc/?locale=zh#/apointmentDetails/1/${venue.id}/%25E5%2585%25A8%25E9%2583%25A8/0`},
+]));
 export function isVenueUrl(url,key) {return Boolean(VENUES[key]&&globalThis.SJTU_ROUTE.matches(url,VENUES[key].id));}
-export const RUSH_DEFAULTS = Object.freeze({venue:"huxiaoming", scope:"indoor", court:6,
-  releaseTime:"12:00:00", times:["19:00-20:00","20:00-21:00","21:00-22:00","18:00-19:00"]});
+export const RUSH_DEFAULTS = Object.freeze({
+  ...bookingRules.rushDefaults,
+  releaseTime:`${String(bookingRules.releaseHour).padStart(2,"0")}:00:00`,
+});
 export const scopeNames = {all:"全部都要", indoor:"只要室内场", outdoor:"只要室外场"};
-const MAX_MONITOR_DATES = 8;
+const allCourts = Array.from({length:bookingRules.courtCount},(_,i)=>i+1);
+const indoorCourts = bookingRules.huxiaomingIndoorCourts;
+const outdoorCourts = allCourts.filter(court=>!indoorCourts.includes(court));
 const formatter = new Intl.DateTimeFormat("en-CA", {timeZone:"Asia/Shanghai", year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23"});
 export function chinaParts(now=Date.now()) {
   return Object.fromEntries(formatter.formatToParts(new Date(now)).filter(p=>p.type!=="literal").map(p=>[p.type,p.value]));
@@ -44,50 +55,59 @@ export function parseDates(text,maxDates=MAX_MONITOR_DATES) {
   return [...values];
 }
 export function defaultDateText(now=Date.now()) {
-  const hour=Number(chinaParts(now).hour);const first=addDays(chinaDate(now),hour>=21?1:0);
-  return `${first}~${addDays(first,(hour>=12&&hour<21?MAX_MONITOR_DATES:7)-1)}`;
+  const hour=Number(chinaParts(now).hour),startTomorrow=hour>=CLOSE_HOUR-1;
+  const first=addDays(chinaDate(now),startTomorrow?1:0);
+  const visibleDays=!startTomorrow&&hour>=bookingRules.releaseHour?MAX_MONITOR_DATES:RUSH_TARGET_DAYS_AHEAD;
+  return `${first}~${addDays(first,visibleDays-1)}`;
 }
-export function monitorDefaults(now=Date.now()) {return {venues:["east","huxiaoming"], scope:"all",dateText:defaultDateText(now),start:17,end:22,interval:20,autoOrder:true};}
+export function monitorDefaults(now=Date.now()) {
+  return {venues:Object.keys(VENUES),scope:"all",dateText:defaultDateText(now),
+    start:bookingRules.defaultMonitorStartHour,end:CLOSE_HOUR,interval:bookingRules.defaultCheckIntervalSeconds,autoOrder:true};
+}
 export function allowedCourts(venue,scope="all") {
   if(!VENUES[venue]) throw Error("请选择有效场馆");
   if(!Object.hasOwn(scopeNames,scope)) throw Error("请选择有效场地范围");
-  return venue!=="huxiaoming"||scope==="all"?[1,2,3,4,5,6,7,8]:scope==="indoor"?[6,7]:[1,2,3,4,5,8];
+  if(venue!=="huxiaoming"||scope==="all") return [...allCourts];
+  return scope==="indoor"?[...indoorCourts]:[...outdoorCourts];
 }
 export function courtOrder(venue,scope,preferred) {const courts=allowedCourts(venue,scope);const n=Number(preferred);if(!courts.includes(n)) throw Error("优先场地不在当前场地范围内");return [n,...courts.filter(c=>c!==n)];}
 export function parseTimeRange(value) {
   const match=String(value).trim().match(/^(\d{1,2}):00\s*[-~]\s*(\d{1,2}):00$/);
   if(!match) throw Error("时段格式应为 HH:00-HH:00");
   const start=Number(match[1]),end=Number(match[2]);
-  if(start<7||end>22||end!==start+1) throw Error("抢场时段须为 07:00 至 22:00 内连续一小时");
+  if(start<OPEN_HOUR||end>CLOSE_HOUR||end!==start+1) throw Error(`抢场时段须为 ${courtHoursText} 内连续一小时`);
   return `${String(start).padStart(2,"0")}:00-${String(end).padStart(2,"0")}:00`;
 }
 export function releaseTimestamp(time,now=Date.now()) {
   if(!/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(String(time))) throw Error("开始抢场时间应为 HH:MM:SS");
   return Date.parse(`${chinaDate(now)}T${time}+08:00`);
 }
+const courtHoursText=`${String(OPEN_HOUR).padStart(2,"0")}:00 至 ${String(CLOSE_HOUR).padStart(2,"0")}:00`;
+export function rushTargetDate(now=Date.now()) {return addDays(chinaDate(now),RUSH_TARGET_DAYS_AHEAD);}
 export function validateConfig(mode,value,now=Date.now(),{maxMonitorDates=MAX_MONITOR_DATES}={}) {
   if(!value||typeof value!=="object") throw Error("配置格式不正确");
   const scope=value.scope||"all";allowedCourts(mode==="rush"?value.venue:"east",scope);
   if(mode==="monitor") {
     const venues=[...new Set(value.venues||[])];if(!venues.length||venues.some(v=>!VENUES[v])) throw Error("至少选择一个有效场馆");
     const start=Number(value.start),end=Number(value.end),interval=Number(value.interval);
-    if(!Number.isInteger(start)||!Number.isInteger(end)||start<7||end>22||end<=start) throw Error("监控时间应在 07:00 至 22:00 内，结束晚于开始");
-    if(!Number.isSafeInteger(interval)||interval<10||interval>2147483) throw Error("检查间隔须为不小于 10 的整数秒");
+    if(!Number.isInteger(start)||!Number.isInteger(end)||start<OPEN_HOUR||end>CLOSE_HOUR||end<=start) throw Error(`监控时间应在 ${courtHoursText} 内，结束晚于开始`);
+    if(!Number.isSafeInteger(interval)||interval<MIN_CHECK_INTERVAL_SECONDS||interval>2147483) throw Error(`检查间隔须为不小于 ${MIN_CHECK_INTERVAL_SECONDS} 的整数秒`);
     return {venues,scope,dateText:String(value.dateText).trim(),dates:parseDates(value.dateText,maxMonitorDates),start,end,interval,autoOrder:value.autoOrder===true};
   }
   if(mode!=="rush") throw Error("模式无效");
   const venue=value.venue;courtOrder(venue,scope,value.court);
-  if(!Array.isArray(value.times)||!value.times.length||value.times.length>7) throw Error("请设置 1 至 7 个抢场时段");
+  if(!Array.isArray(value.times)||!value.times.length||value.times.length>MAX_RUSH_TIME_SLOTS) throw Error(`请设置 1 至 ${MAX_RUSH_TIME_SLOTS} 个抢场时段`);
   const times=value.times.map(parseTimeRange);if(new Set(times).size!==times.length) throw Error("抢场时段不能重复");
   const releaseAt=releaseTimestamp(value.releaseTime,now);
-  return {venue,scope:venue==="east"?"all":scope,court:Number(value.court),times,releaseTime:value.releaseTime,targetDate:addDays(chinaDate(now),7),releaseAt,deadline:releaseAt+60000};
+  return {venue,scope:venue==="east"?"all":scope,court:Number(value.court),times,releaseTime:value.releaseTime,
+    targetDate:rushTargetDate(now),releaseAt,deadline:releaseAt+RUSH_ATTEMPT_WINDOW_SECONDS*1000};
 }
-export function cooldownUntil(now=Date.now()) {return Date.parse(`${addDays(chinaDate(now),1)}T00:10:00+08:00`);}
+export function cooldownUntil(now=Date.now()) {return Date.parse(`${addDays(chinaDate(now),1)}T${bookingRules.rateLimitRetryTime}:00+08:00`);}
 export function slotKey(slot) {return `${slot.venue}|${slot.date}|${slot.hour}|${slot.court}`;}
 export function slotText(slot) {return `${VENUES[slot.venue].name} ${slot.date} ${slot.hour} ${slot.court}`;}
 export function filterSlots(slots,venue,scope) {const courts=allowedCourts(venue,scope);return slots.filter(s=>courts.includes(Number(String(s.court).replace(/^场地/,""))));}
 export function autoOrderCandidate(slots,config,halted,attempts,now=Date.now()) {
   if(!config.autoOrder||halted||slots.length!==1) return null;
-  const slot=slots[0];return now-(attempts[slotKey(slot)]??-Infinity)>=60000?slot:null;
+  const slot=slots[0];return now-(attempts[slotKey(slot)]??-Infinity)>=bookingRules.autoOrderRetryCooldownSeconds*1000?slot:null;
 }
 export function taskExpired(task,now=Date.now()) {return task.mode==="rush"&&now>=task.config.deadline;}

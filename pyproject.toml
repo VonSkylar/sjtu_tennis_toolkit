@@ -22,3 +22,6 @@ version = {attr = "sjtu_tennis_toolkit.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["sjtu_tennis_toolkit*"]
+
+[tool.setuptools.package-data]
+sjtu_tennis_toolkit = ["booking_rules.json"]

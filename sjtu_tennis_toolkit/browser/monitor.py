@@ -18,6 +18,7 @@ from sjtu_tennis_toolkit.constants import (
     AUTO_ORDER_RETRY_COOLDOWN_SECONDS,
     DEFAULT_CHECK_INTERVAL_SECONDS,
     DEBUG_PAGE_LIST_SECONDS,
+    OPEN_HOUR,
     SETUP_SCAN_SECONDS,
     USER_DATA_DIR,
 )
@@ -360,7 +361,7 @@ class VenueMonitor(BookingPageActions):
         try:
             return bool(
                 page.locator("text=场地1").count() > 0
-                and (page.locator("text=07:00").count() > 0 or page.locator("text=08:00").count() > 0)
+                and any(page.locator(f"text={hour:02d}:00").count() > 0 for hour in (OPEN_HOUR, OPEN_HOUR + 1))
             )
         except Exception:
             return False

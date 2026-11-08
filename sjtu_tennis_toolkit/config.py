@@ -7,11 +7,14 @@ import re
 from pathlib import Path
 
 from sjtu_tennis_toolkit.constants import (
+    BOOKING_RULES,
     CLOSE_HOUR,
     DEFAULT_CHECK_INTERVAL_SECONDS,
     EIGHTH_DAY_RELEASE_HOUR,
+    MAX_MONITOR_DATES,
     MIN_CHECK_INTERVAL_SECONDS,
     OPEN_HOUR,
+    RUSH_TARGET_DAYS_AHEAD,
     TENNIS_COURT_COUNT,
 )
 from sjtu_tennis_toolkit.models import (
@@ -36,28 +39,26 @@ HUXIAOMING_COURT_SCOPE_LABELS = {
 }
 HUXIAOMING_COURT_SCOPE_OPTIONS = tuple(HUXIAOMING_COURT_SCOPE_LABELS.values())
 RUSH_TIME_NOT_SELECTED = "不选择"
-MAX_RUSH_TIME_SLOTS = 7
+MAX_RUSH_TIME_SLOTS = BOOKING_RULES["maxRushTimeSlots"]
 ALL_TENNIS_COURTS = tuple(range(1, TENNIS_COURT_COUNT + 1))
-HUXIAOMING_OUTDOOR_COURTS = (1, 2, 3, 4, 5, 8)
-HUXIAOMING_INDOOR_COURTS = (6, 7)
-DEFAULT_RUSH_VENUE_KEY = "huxiaoming"
-DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE = HUXIAOMING_COURT_SCOPE_INDOOR
-DEFAULT_RUSH_PREFERRED_COURT = HUXIAOMING_INDOOR_COURTS[0]
-DEFAULT_RUSH_TIME_RANGES = (
-    "19:00-20:00",
-    "20:00-21:00",
-    "21:00-22:00",
-    "18:00-19:00",
+HUXIAOMING_INDOOR_COURTS = tuple(BOOKING_RULES["huxiaomingIndoorCourts"])
+HUXIAOMING_OUTDOOR_COURTS = tuple(
+    court for court in ALL_TENNIS_COURTS if court not in HUXIAOMING_INDOOR_COURTS
 )
+_RUSH_DEFAULTS = BOOKING_RULES["rushDefaults"]
+DEFAULT_RUSH_VENUE_KEY = _RUSH_DEFAULTS["venue"]
+DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE = _RUSH_DEFAULTS["scope"]
+DEFAULT_RUSH_PREFERRED_COURT = _RUSH_DEFAULTS["court"]
+DEFAULT_RUSH_TIME_RANGES = tuple(_RUSH_DEFAULTS["times"])
 
 
 # ---------------------------------------------------------------------------
 # Rate-limit cooldown files (relative to project root / CWD)
 # ---------------------------------------------------------------------------
 RATE_LIMIT_COOLDOWN_FILE = Path("rate_limit_until.txt")
-RUSH_TARGET_DAYS_AHEAD = 7
-DEFAULT_RUSH_RELEASE_TIME = dt.time(hour=12)
-RUSH_ATTEMPT_WINDOW = dt.timedelta(minutes=1)
+DEFAULT_RUSH_RELEASE_TIME = dt.time(hour=EIGHTH_DAY_RELEASE_HOUR)
+DEFAULT_RUSH_RELEASE_TIME_TEXT = DEFAULT_RUSH_RELEASE_TIME.isoformat()
+RUSH_ATTEMPT_WINDOW = dt.timedelta(seconds=BOOKING_RULES["rushAttemptWindowSeconds"])
 
 
 # ---------------------------------------------------------------------------
@@ -122,8 +123,8 @@ def court_matches_monitor_scope(venue_key: str, court_text: str, config: Monitor
 
     court_number = int(match.group(1))
     if config.huxiaoming_court_scope == HUXIAOMING_COURT_SCOPE_INDOOR:
-        return court_number in {6, 7}
-    return court_number in {1, 2, 3, 4, 5, 8}
+        return court_number in HUXIAOMING_INDOOR_COURTS
+    return court_number in HUXIAOMING_OUTDOOR_COURTS
 
 
 def parse_rush_config(
@@ -131,7 +132,7 @@ def parse_rush_config(
     venue_key: str,
     court_text: str,
     now: dt.datetime | None = None,
-    release_time_text: str = "12:00:00",
+    release_time_text: str = DEFAULT_RUSH_RELEASE_TIME_TEXT,
     second_time_range_text: str = "",
     third_time_range_text: str = "",
     huxiaoming_court_scope: str = HUXIAOMING_COURT_SCOPE_ALL,
@@ -191,8 +192,8 @@ def parse_dates(text: str) -> tuple[dt.date, ...]:
         if end < start:
             raise ValueError("日期范围的结束日期必须晚于或等于开始日期")
         days = (end - start).days + 1
-        if days > 14:
-            raise ValueError("一次最多监控 14 天")
+        if days > MAX_MONITOR_DATES:
+            raise ValueError(f"一次最多监控 {MAX_MONITOR_DATES} 天")
         return tuple(start + dt.timedelta(days=offset) for offset in range(days))
     if len(range_parts) > 2:
         raise ValueError("日期范围格式应为 2026-05-11~2026-05-18")
@@ -206,8 +207,8 @@ def parse_dates(text: str) -> tuple[dt.date, ...]:
             seen.add(date)
             dates.append(date)
 
-    if len(dates) > 14:
-        raise ValueError("一次最多监控 14 天")
+    if len(dates) > MAX_MONITOR_DATES:
+        raise ValueError(f"一次最多监控 {MAX_MONITOR_DATES} 天")
     return tuple(dates)
 
 
@@ -298,10 +299,10 @@ def parse_rush_start_time(text: str) -> dt.time:
 def parse_court_number(text: str) -> int:
     value = text.strip().replace("场地", "")
     if not value.isdigit():
-        raise ValueError("场地号必须是 1 到 8")
+        raise ValueError(f"场地号必须是 1 到 {TENNIS_COURT_COUNT}")
     court = int(value)
-    if not (1 <= court <= 8):
-        raise ValueError("场地号必须是 1 到 8")
+    if not (1 <= court <= TENNIS_COURT_COUNT):
+        raise ValueError(f"场地号必须是 1 到 {TENNIS_COURT_COUNT}")
     return court
 
 
@@ -367,7 +368,7 @@ def rush_court_attempt_order(
 ) -> tuple[int, ...]:
     normalized = tuple(sorted(set(allowed_courts)))
     if not normalized or any(court not in ALL_TENNIS_COURTS for court in normalized):
-        raise ValueError("允许场地号必须是 1 到 8")
+        raise ValueError(f"允许场地号必须是 1 到 {TENNIS_COURT_COUNT}")
     if preferred_court not in normalized:
         raise ValueError("首选场地号不在允许的场地范围内")
     return (preferred_court, *(court for court in normalized if court != preferred_court))
@@ -409,14 +410,14 @@ def target_date_labels(target_date: dt.date) -> list[str]:
 
 def default_date_range_text(now: dt.datetime | None = None) -> str:
     current = now or dt.datetime.now()
-    # When opened at or after 21:00, today's courts are almost over – start from tomorrow.
+    # Skip today during the last hour of operation.
+    visible_days = RUSH_TARGET_DAYS_AHEAD
     if current.hour >= CLOSE_HOUR - 1:
         start_date = current.date() + dt.timedelta(days=1)
-        # Tomorrow's 8th-day slot is only released at tomorrow noon, so use 7 days.
-        visible_days = 7
     else:
         start_date = current.date()
-        visible_days = 8 if current.hour >= EIGHTH_DAY_RELEASE_HOUR else 7
+        if current.hour >= EIGHTH_DAY_RELEASE_HOUR:
+            visible_days = MAX_MONITOR_DATES
     end_date = start_date + dt.timedelta(days=visible_days - 1)
     return f"{start_date.isoformat()}~{end_date.isoformat()}"
 
@@ -426,7 +427,7 @@ def default_date_range_text(now: dt.datetime | None = None) -> str:
 # ---------------------------------------------------------------------------
 def next_rate_limit_retry_time() -> dt.datetime:
     tomorrow = dt.date.today() + dt.timedelta(days=1)
-    return dt.datetime.combine(tomorrow, dt.time(hour=0, minute=10))
+    return dt.datetime.combine(tomorrow, dt.time.fromisoformat(BOOKING_RULES["rateLimitRetryTime"]))
 
 
 def save_rate_limit_cooldown(until: dt.datetime) -> None:

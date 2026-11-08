@@ -4,7 +4,7 @@
 
 ## 安装（第一次约几步操作）
 
-1. 把 `sjtu-tennis-extension-1.0.5.zip` 解压到一个长期保留的文件夹。
+1. 把 `sjtu-tennis-extension-1.0.6.zip` 解压到一个长期保留的文件夹。
 2. Chrome 打开 `chrome://extensions`；Edge 打开 `edge://extensions`。
 3. 开启“开发者模式”，点击“加载已解压的扩展程序”，选择**里面有 `manifest.json` 的文件夹**。
 4. 在浏览器工具栏的扩展菜单中找到“网球预约助手”，固定图标，点击打开侧边栏。
@@ -87,3 +87,5 @@ python -X utf8 extension/tools/package.py --store
 ```
 
 `tools/sync_probes.py` 将旧版共享 JavaScript 探针转成插件内的静态可执行函数；仅在维护探针时运行。打包脚本不包含开发工具、测试或 Python 文件。`--store` 生成商店专用 ZIP，上传时无需解压。
+
+场馆、开放时段、日期窗口和抢场默认值维护在 [booking_rules.json](../sjtu_tennis_toolkit/booking_rules.json)。Python 版直接读取，插件打包时自动更新 `booking-rules.js`。使用源码目录调试时，在修改规则后运行 `python -X utf8 extension/tools/package.py --sync-rules`，再重新加载插件。请将规则源文件和生成的文件一起提交。

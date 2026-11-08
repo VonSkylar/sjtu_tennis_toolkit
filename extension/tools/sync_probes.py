@@ -22,9 +22,12 @@ SPECS = {
 }
 
 def generate():
+    geometry = {key: value for key, value in BOOKING_GRID_GEOMETRY.items() if key != "courtCount"}
     result = ["// Ported from the existing Python browser probes; see tools/sync_probes.py.\n",
               "globalThis.SJTU_PROBES = (() => {\n",
-              "const geom = " + json.dumps(BOOKING_GRID_GEOMETRY) + ";\n", GRID_HELPERS, "\nreturn {geometry: geom,\n"]
+              "const geom = " + json.dumps(geometry) + ";\n",
+              "geom.courtCount = globalThis.SJTU_BOOKING_RULES.courtCount;\n",
+              GRID_HELPERS, "\nreturn {geometry: geom,\n"]
     for name, (module, method) in SPECS.items():
         tree = ast.parse((ROOT / "sjtu_tennis_toolkit" / "browser" / f"{module}.py").read_text(encoding="utf-8"))
         func = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == method)

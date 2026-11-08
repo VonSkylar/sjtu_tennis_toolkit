@@ -1,4 +1,8 @@
-import {VENUES,allowedCourts,addDays,chinaDate,chinaTime} from "./rules.js";
+import {
+  VENUES, OPEN_HOUR, CLOSE_HOUR, MAX_MONITOR_DATES, MIN_CHECK_INTERVAL_SECONDS,
+  MAX_RUSH_TIME_SLOTS, RUSH_TARGET_DAYS_AHEAD, RUSH_ATTEMPT_WINDOW_SECONDS,
+  allowedCourts, rushTargetDate, chinaDate, chinaTime,
+} from "./rules.js";
 const $=id=>document.getElementById(id),monitor=$("monitor-form"),rush=$("rush-form");
 let mode="monitor",snapshot=null,initialized=false,saving=null,requestBusy=false,lastLogs="",lastSlots="";
 let useDefaultDates=true;
@@ -9,17 +13,29 @@ async function send(type,extra={}) {
   if(!result?.ok) throw Error(result?.error||"插件后台暂未响应");return result.data;
 }
 function options(select,start,end) {for(let h=start;h<=end;h++) {const o=document.createElement("option");o.value=h;o.textContent=`${String(h).padStart(2,"0")}:00`;select.append(o);}}
-options(f(monitor,"start"),7,21);options(f(monitor,"end"),8,22);
+options(f(monitor,"start"),OPEN_HOUR,CLOSE_HOUR-1);
+options(f(monitor,"end"),OPEN_HOUR+1,CLOSE_HOUR);
+f(monitor,"interval").min=MIN_CHECK_INTERVAL_SECONDS;
+$("monitor-date-hint").textContent=`默认按北京时间滚动更新 ${RUSH_TARGET_DAYS_AHEAD} 或 ${MAX_MONITOR_DATES} 天。手填日期会固定，支持单日、多日（逗号分隔）或日期范围，最多 ${MAX_MONITOR_DATES} 天。`;
+$("target-date-hint").textContent=`自动计算 ${RUSH_TARGET_DAYS_AHEAD} 天后`;
+$("rush-window-hint").textContent=`开始后将按时段和场地优先级自动提交预约。放场后 ${RUSH_ATTEMPT_WINDOW_SECONDS} 秒结束。`;
+for(const option of f(monitor,"scope").options) {
+  if(option.value!=="all") option.textContent+=` · ${allowedCourts("huxiaoming",option.value).join("、")} 号`;
+}
+const rushTimes=Array.from({length:CLOSE_HOUR-OPEN_HOUR},(_,i)=>{
+  const hour=OPEN_HOUR+i;
+  return `${String(hour).padStart(2,"0")}:00-${String(hour+1).padStart(2,"0")}:00`;
+});
 function timeRow(value) {
   const row=document.createElement("div");row.className="time-row";
   const number=document.createElement("span");number.className="time-number";
   const select=document.createElement("select");select.name="timeRange";
-  for(let h=7;h<22;h++) {const o=document.createElement("option");o.value=`${String(h).padStart(2,"0")}:00-${String(h+1).padStart(2,"0")}:00`;o.textContent=o.value;select.append(o);}
+  for(const time of rushTimes) {const o=document.createElement("option");o.value=time;o.textContent=time;select.append(o);}
   select.value=value;select.setAttribute("aria-label","备选时段");
   const remove=document.createElement("button");remove.type="button";remove.className="remove-time";remove.textContent="×";remove.setAttribute("aria-label","删除这个时段");
   remove.addEventListener("click",()=>{row.remove();numberRows();changed();});row.append(number,select,remove);return row;
 }
-function numberRows() {const rows=[...$("time-rows").children];rows.forEach((row,i)=>{row.querySelector(".time-number").textContent=i+1;row.querySelector("select").setAttribute("aria-label",`第 ${i+1} 优先时段`);row.querySelector("button").disabled=rows.length===1||snapshot?.task?.active;});$("add-time").disabled=rows.length>=7||snapshot?.task?.active;}
+function numberRows() {const rows=[...$("time-rows").children];rows.forEach((row,i)=>{row.querySelector(".time-number").textContent=i+1;row.querySelector("select").setAttribute("aria-label",`第 ${i+1} 优先时段`);row.querySelector("button").disabled=rows.length===1||snapshot?.task?.active;});$("add-time").disabled=rows.length>=MAX_RUSH_TIME_SLOTS||snapshot?.task?.active;}
 function updateCourts(preferred=f(rush,"court").value) {
   const venue=f(rush,"venue").value,scope=f(rush,"scope");
   scope.disabled=venue==="east"||Boolean(snapshot?.task?.active&&snapshot.task.mode==="rush");
@@ -53,7 +69,7 @@ function render(state) {
   }
   $("status-badge").textContent=cooldown?"冷却中":t?statusNames[t.status]||"运行中":"未开始";
   $("status-badge").className="badge"+(active&&!['manual','login'].includes(t.status)?" running":["unknown","limited","failed"].includes(t?.status)?" error":"");
-  $("status-text").textContent=cooldown?`每日请求额度已用完，${chinaDate(state.cooldown)} 00:10 后可再试`:t?.message||"设置条件后即可开始";
+  $("status-text").textContent=cooldown?`每日请求额度已用完，${chinaDate(state.cooldown)} ${chinaTime(state.cooldown).slice(0,5)} 后可再试`:t?.message||"设置条件后即可开始";
   $("status-detail").textContent=active?`${t.mode==="monitor"?"监控":"抢场"}任务运行中 · 侧边栏可关闭`:"关闭侧边栏不会停止任务";
   $("start").textContent=mode==="monitor"?"开始监控":"开始抢场";$("start").disabled=active||cooldown||requestBusy;
   $("stop").disabled=!active||requestBusy;$("resume").hidden=!(active&&t.status==="manual");
@@ -78,7 +94,7 @@ function render(state) {
   $("last-check").textContent=t?.lastCheck?`最近 ${chinaTime(t.lastCheck)}`:"尚未检查";tickClock();
 }
 function tickClock() {
-  $("clock").textContent=`北京时间 ${chinaTime()}`;$("target-date").textContent=addDays(chinaDate(),7);
+  $("clock").textContent=`北京时间 ${chinaTime()}`;$("target-date").textContent=rushTargetDate();
   const t=snapshot?.task;
   if(t?.active&&t.mode==="rush") {const before=t.config.releaseAt>Date.now(),ms=(before?t.config.releaseAt:t.config.deadline)-Date.now(),seconds=Math.max(0,Math.ceil(ms/1000));$("status-detail").textContent=before?`距放场 ${Math.floor(seconds/3600)}:${String(Math.floor(seconds/60)%60).padStart(2,"0")}:${String(seconds%60).padStart(2,"0")}`:`剩余尝试时间 ${seconds} 秒`;}
 }
@@ -95,7 +111,13 @@ function changed(event) {
 for(const form of [monitor,rush]) {form.addEventListener("submit",e=>e.preventDefault());form.addEventListener("input",changed);form.addEventListener("change",changed);}
 f(rush,"venue").addEventListener("change",()=>updateCourts());f(rush,"scope").addEventListener("change",()=>updateCourts());
 for(const m of ["monitor","rush"]) $("mode-"+m).addEventListener("click",()=>setMode(m));
-$("add-time").addEventListener("click",()=>{const used=new Set([...$("time-rows").querySelectorAll("select")].map(el=>el.value));let value;for(let h=7;h<22;h++){const candidate=`${String(h).padStart(2,"0")}:00-${String(h+1).padStart(2,"0")}:00`;if(!used.has(candidate)){value=candidate;break;}}if(value&&used.size<7){$("time-rows").append(timeRow(value));numberRows();changed();}});
+$("add-time").addEventListener("click",()=>{
+  const selects=[...$("time-rows").querySelectorAll("select")];
+  if(selects.length>=MAX_RUSH_TIME_SLOTS) return;
+  const used=new Set(selects.map(el=>el.value));
+  const next=rushTimes.find(time=>!used.has(time));
+  if(next) {$("time-rows").append(timeRow(next));numberRows();changed();}
+});
 $("start").addEventListener("click",()=>{clearTimeout(saving);act("START",{mode,config:config()});});
 $("stop").addEventListener("click",()=>act("STOP"));$("resume").addEventListener("click",()=>act("RESUME"));$("stop-alarm").addEventListener("click",()=>act("STOP_ALARM"));
 $("open-venue").addEventListener("click",()=>act("OPEN_VENUE",{venue:mode==="rush"?f(rush,"venue").value:"huxiaoming"}));

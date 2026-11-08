@@ -18,6 +18,7 @@ from pathlib import Path
 from sjtu_tennis_toolkit.config import (
     DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE,
     DEFAULT_RUSH_PREFERRED_COURT,
+    DEFAULT_RUSH_RELEASE_TIME_TEXT,
     DEFAULT_RUSH_TIME_RANGES,
     DEFAULT_RUSH_VENUE_KEY,
     HUXIAOMING_COURT_SCOPE_ALL,
@@ -38,7 +39,6 @@ from sjtu_tennis_toolkit.models import VENUES_BY_KEY
 # launcher batch scripts ``cd`` into the project directory before starting.
 RUSH_STATE_FILE = Path("rush_state.json")
 RUSH_STATE_VERSION = 1
-DEFAULT_RUSH_RELEASE_TIME_TEXT = "12:00:00"
 
 
 @dataclass(frozen=True)

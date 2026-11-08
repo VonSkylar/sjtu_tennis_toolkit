@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
+from sjtu_tennis_toolkit.constants import BOOKING_RULES, EIGHTH_DAY_RELEASE_HOUR
+
 
 @dataclass(frozen=True)
 class Venue:
@@ -13,17 +15,17 @@ class Venue:
     url: str
 
 
-VENUES = (
-    Venue(
-        key="east",
-        name="东区网球场",
-        url="https://sports.sjtu.edu.cn/pc/#/apointmentDetails/1/3466293b-a7d8-45be-a918-8526e3bed4c5/%25E5%2585%25A8%25E9%2583%25A8/0",
-    ),
-    Venue(
-        key="huxiaoming",
-        name="胡晓明网球场",
-        url="https://sports.sjtu.edu.cn/pc/?locale=zh#/apointmentDetails/1/0c6edc93-87ac-41b0-9895-6b66fda93fe5/%25E5%2585%25A8%25E9%2583%25A8/0",
-    ),
+def _venue_url(key: str, venue_id: str) -> str:
+    locale = "?locale=zh" if key == "huxiaoming" else ""
+    return (
+        f'{BOOKING_RULES["schoolOrigin"]}/pc/{locale}'
+        f"#/apointmentDetails/1/{venue_id}/%25E5%2585%25A8%25E9%2583%25A8/0"
+    )
+
+
+VENUES = tuple(
+    Venue(key=key, name=venue["name"], url=_venue_url(key, venue["id"]))
+    for key, venue in BOOKING_RULES["venues"].items()
 )
 VENUES_BY_KEY = {venue.key: venue for venue in VENUES}
 
@@ -51,7 +53,7 @@ class RushConfig:
     target_date: dt.date
     time_slots: tuple[RushTimeSlot, ...]
     preferred_court: int
-    release_time: dt.time = dt.time(hour=12)
+    release_time: dt.time = dt.time(hour=EIGHTH_DAY_RELEASE_HOUR)
     huxiaoming_court_scope: str = "all"
 
 

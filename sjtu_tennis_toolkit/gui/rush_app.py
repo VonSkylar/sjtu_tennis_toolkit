@@ -10,6 +10,7 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from sjtu_tennis_toolkit.browser.rusher import RushBooker
 from sjtu_tennis_toolkit.config import (
+    ALL_TENNIS_COURTS,
     HUXIAOMING_COURT_SCOPE_LABELS,
     HUXIAOMING_COURT_SCOPE_OPTIONS,
     MAX_RUSH_TIME_SLOTS,
@@ -130,7 +131,7 @@ class RushApp(tk.Tk):
         self.court_combo = ttk.Combobox(
             form,
             textvariable=self.court_var,
-            values=tuple(str(court) for court in range(1, 9)),
+            values=tuple(str(court) for court in ALL_TENNIS_COURTS),
             state="readonly",
             width=8,
         )

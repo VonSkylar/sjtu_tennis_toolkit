@@ -52,10 +52,17 @@
         if(el===document.body||el.tagName==="TABLE") break;
         const text=norm(el.innerText).replace(/[~～—至]/g,"-");
         if(text.length>400) break;
-        // There are exactly eight courts. Whitespace normalization can join
-        // "场地6 19:00" into "场地619:00", so do not consume the hour digits.
-        const courts=[...new Set(text.match(/场地[1-8]/g)||[])];
-        if(courts.length===1) {for(const time of text.match(/\d{2}:00-\d{2}:00/g)||[]) entries.add(`${courts[0]}|${time}`);break;}
+        // Whitespace normalization can join "场地6 19:00" into "场地619:00".
+        const courts=new Set();
+        for(const [,number] of text.matchAll(/场地(\d+?)(?=\d{2}:00|\D|$)/g)) {
+          const court=Number(number);
+          if(court>=1&&court<=P.geometry.courtCount) courts.add(court);
+        }
+        if(courts.size===1) {
+          const [court]=courts;
+          for(const time of text.match(/\d{2}:00-\d{2}:00/g)||[]) entries.add(`场地${court}|${time}`);
+          break;
+        }
       }
     }
     return {matches:entries.size===1&&entries.has(`${slot.court}|${range}`),hasAny:entries.size>0};
@@ -136,7 +143,7 @@
     // Home recommendations contain both venue names. Only the appointment
     // route and its exact venue ID authorize scanning or booking actions.
     if(!globalThis.SJTU_ROUTE.matches(location.href,m.venueId)) return {kind:"wrong_venue",clicked:false};
-    if(m.action==="dates") return {kind:"ready",...P.dates(args({labels:labels(m.date).map(norm),readyCount:7}))};
+    if(m.action==="dates") return {kind:"ready",...P.dates(args({labels:labels(m.date).map(norm),readyCount:globalThis.SJTU_BOOKING_RULES.dateTabReadyCount}))};
     if(m.action==="scan") {
       if(!await selectDate(m.date,m)) return {kind:"not_open",message:`${m.date} 尚未出现在日期条`};
       const state=health();if(state.kind!=="ready") return state;

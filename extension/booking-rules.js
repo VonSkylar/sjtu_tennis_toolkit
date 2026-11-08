@@ -1,0 +1,42 @@
+// Generated from sjtu_tennis_toolkit/booking_rules.json by tools/package.py.
+globalThis.SJTU_BOOKING_RULES = {
+  "schoolOrigin": "https://sports.sjtu.edu.cn",
+  "venues": {
+    "east": {
+      "name": "东区网球场",
+      "id": "3466293b-a7d8-45be-a918-8526e3bed4c5"
+    },
+    "huxiaoming": {
+      "name": "胡晓明网球场",
+      "id": "0c6edc93-87ac-41b0-9895-6b66fda93fe5"
+    }
+  },
+  "openHour": 7,
+  "closeHour": 22,
+  "courtCount": 8,
+  "huxiaomingIndoorCourts": [
+    6,
+    7
+  ],
+  "bookingDaysAhead": 7,
+  "releaseHour": 12,
+  "dateTabReadyCount": 7,
+  "defaultMonitorStartHour": 17,
+  "defaultCheckIntervalSeconds": 20,
+  "minCheckIntervalSeconds": 10,
+  "autoOrderRetryCooldownSeconds": 60,
+  "rateLimitRetryTime": "00:10",
+  "rushAttemptWindowSeconds": 60,
+  "maxRushTimeSlots": 7,
+  "rushDefaults": {
+    "venue": "huxiaoming",
+    "scope": "indoor",
+    "court": 6,
+    "times": [
+      "19:00-20:00",
+      "20:00-21:00",
+      "21:00-22:00",
+      "18:00-19:00"
+    ]
+  }
+};
