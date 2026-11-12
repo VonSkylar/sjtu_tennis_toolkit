@@ -11,7 +11,7 @@
 
 也可以直接加载源码仓库的 `extension` 文件夹。不要删除或移动已经加载的文件夹；更新时替换该目录内容，再到扩展管理页点击“重新加载”。扩展更新后需要重新开始任务。
 
-Chrome 商店版按[私有发布说明](CHROME_WEB_STORE.md)提交。审核通过后，白名单内的 Google 账号可通过商店链接安装，之后由 Chrome 自动更新。商店版和开发者模式版本各有自己的本地设置；切换时请先停止并停用旧版，再在商店版重新设置。
+Chrome 商店版可通过[商店页面](https://chromewebstore.google.com/detail/bmiackkadmpgoimbjlfaghdaicjknpkj)安装，之后由 Chrome 自动更新。商店版和开发者模式版本各有自己的本地设置。切换时请先停止并停用旧版，再在商店版重新设置。维护者可参考[发布说明](CHROME_WEB_STORE.md)。
 
 ### 从 1.0.0 更新到 1.0.1
 

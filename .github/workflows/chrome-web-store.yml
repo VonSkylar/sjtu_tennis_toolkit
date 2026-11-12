@@ -1,0 +1,119 @@
+name: Release Chrome extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Package, check the Google connection, or submit for review
+        type: choice
+        options: [package, check, submit]
+        default: package
+      publish_after_review:
+        description: Publish automatically after Google approves (submit only)
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      archive: ${{ steps.build.outputs.archive }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Run extension and release tests
+        run: |
+          node --test 'extension/tests/*.test.js'
+          python -m unittest discover -s tests -p test_chrome_web_store_release.py
+      - name: Build Chrome Web Store ZIP
+        id: build
+        run: |
+          python -X utf8 extension/tools/package.py --store
+          version=$(python -c 'import json; print(json.load(open("extension/manifest.json", encoding="utf-8"))["version"])')
+          printf 'archive=sjtu-tennis-extension-%s-chrome-web-store.zip\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'Built Chrome Web Store package for **%s**.\n' "$version" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save ZIP and checksum
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: chrome-web-store-package
+          path: |
+            dist/${{ steps.build.outputs.archive }}
+            dist/*-chrome-web-store.sha256
+          if-no-files-found: error
+
+  store:
+    name: Chrome Web Store
+    if: inputs.operation != 'package'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: chrome-web-store-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+      CWS_ITEM_ID: bmiackkadmpgoimbjlfaghdaicjknpkj
+    steps:
+      - name: Check release configuration
+        env:
+          CWS_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.CWS_WORKLOAD_IDENTITY_PROVIDER }}
+          CWS_SERVICE_ACCOUNT: ${{ vars.CWS_SERVICE_ACCOUNT }}
+        run: |
+          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo '::error::Run Chrome Web Store operations from the main branch.'
+            exit 1
+          fi
+          for setting in CWS_WORKLOAD_IDENTITY_PROVIDER CWS_SERVICE_ACCOUNT CWS_PUBLISHER_ID; do
+            if [[ -z "${!setting}" ]]; then
+              echo "::error::Set repository variable $setting. See extension/CHROME_WEB_STORE.md."
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        if: inputs.operation == 'submit'
+        with:
+          name: chrome-web-store-package
+          path: dist
+      - name: Authenticate to Google
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.CWS_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.CWS_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: ${{ inputs.operation == 'check' && 'https://www.googleapis.com/auth/chromewebstore.readonly' || 'https://www.googleapis.com/auth/chromewebstore' }}
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Check access to the existing listing
+        if: inputs.operation == 'check'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: python extension/tools/publish_store.py check
+      - name: Upload the package and submit for review
+        if: inputs.operation == 'submit'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          CWS_ARCHIVE: ${{ needs.package.outputs.archive }}
+          CWS_PUBLISH_TYPE: ${{ inputs.publish_after_review && 'DEFAULT_PUBLISH' || 'STAGED_PUBLISH' }}
+        run: python extension/tools/publish_store.py submit "dist/$CWS_ARCHIVE" --publish-type "$CWS_PUBLISH_TYPE"
