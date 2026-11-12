@@ -37,34 +37,29 @@ from sjtu_tennis_toolkit.models import Slot
 
 
 class RushConfigTest(unittest.TestCase):
-    def test_rush_app_defaults_target_huxiaoming_indoor_courts(self) -> None:
-        self.assertEqual(DEFAULT_RUSH_VENUE_KEY, "huxiaoming")
+    def test_rush_app_defaults_target_east_court_four(self) -> None:
+        self.assertEqual(DEFAULT_RUSH_VENUE_KEY, "east")
         self.assertEqual(
             DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE,
-            HUXIAOMING_COURT_SCOPE_INDOOR,
+            HUXIAOMING_COURT_SCOPE_ALL,
         )
-        self.assertIn(
-            DEFAULT_RUSH_PREFERRED_COURT,
-            rush_allowed_courts(
-                DEFAULT_RUSH_VENUE_KEY,
-                DEFAULT_RUSH_HUXIAOMING_COURT_SCOPE,
-            ),
-        )
+        self.assertEqual(DEFAULT_RUSH_PREFERRED_COURT, 4)
 
-    def test_rush_app_defaults_have_four_ordered_times(self) -> None:
+    def test_rush_app_defaults_have_five_ordered_times(self) -> None:
         self.assertEqual(
             DEFAULT_RUSH_TIME_RANGES,
             (
-                "19:00-20:00",
-                "20:00-21:00",
                 "21:00-22:00",
+                "20:00-21:00",
+                "19:00-20:00",
                 "18:00-19:00",
+                "17:00-18:00",
             ),
         )
         slots = parse_rush_time_slots(*DEFAULT_RUSH_TIME_RANGES)
         self.assertEqual(
             tuple((slot.start_hour, slot.end_hour) for slot in slots),
-            ((19, 20), (20, 21), (21, 22), (18, 19)),
+            ((21, 22), (20, 21), (19, 20), (18, 19), (17, 18)),
         )
 
     def test_target_date_is_seven_days_after_today(self) -> None:

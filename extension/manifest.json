@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "网球预约助手",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "在当前浏览器中监控上海交通大学网球空场，按所选条件自动提交预约。非校方官方扩展。",
   "minimum_chrome_version": "120",
   "permissions": ["storage", "alarms", "sidePanel", "notifications", "offscreen"],

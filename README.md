@@ -9,7 +9,7 @@
 
 新增 `extension/` 浏览器插件，在侧边栏中操作监控与定时抢场，复用当前浏览器的学校登录状态；无需安装 Python、Playwright 或本地服务。一次运行一种模式，关闭侧边栏后任务继续，浏览器和预约标签页需保持打开。
 
-加载 `extension/` 文件夹，或解压 `dist/sjtu-tennis-extension-1.0.6.zip` 后在浏览器扩展管理页“加载已解压的扩展程序”。完整安装步骤、功能说明与验证边界见 [插件说明](extension/README.md)，Chrome 商店上传见[发布说明](extension/CHROME_WEB_STORE.md)。旧版 Python 工具继续保留，以下为其安装和使用方式。
+加载 `extension/` 文件夹，或解压 `dist/sjtu-tennis-extension-1.0.7.zip` 后在浏览器扩展管理页“加载已解压的扩展程序”。完整安装步骤、功能说明与验证边界见 [插件说明](extension/README.md)，Chrome 商店上传见[发布说明](extension/CHROME_WEB_STORE.md)。旧版 Python 工具继续保留，以下为其安装和使用方式。
 
 ## 工具一览
 

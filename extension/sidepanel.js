@@ -32,10 +32,48 @@ function timeRow(value) {
   const select=document.createElement("select");select.name="timeRange";
   for(const time of rushTimes) {const o=document.createElement("option");o.value=time;o.textContent=time;select.append(o);}
   select.value=value;select.setAttribute("aria-label","备选时段");
+  const actions=document.createElement("div");
+  actions.className="time-actions";
+  for(const [direction, arrow, label] of [["up", "↑", "上移"], ["down", "↓", "下移"]]) {
+    const move=document.createElement("button");
+    move.type="button";
+    move.className=`move-time time-${direction}`;
+    move.textContent=arrow;
+    move.title=label;
+    move.addEventListener("click",()=>{
+      const neighbor=direction==="up" ? row.previousElementSibling : row.nextElementSibling;
+      if(!neighbor) return;
+      if(direction==="up") neighbor.before(row);
+      else neighbor.after(row);
+      numberRows();
+      const focusTarget=move.disabled ? actions.querySelector(".move-time:not(:disabled)") : move;
+      focusTarget?.focus();
+      changed();
+    });
+    actions.append(move);
+  }
   const remove=document.createElement("button");remove.type="button";remove.className="remove-time";remove.textContent="×";remove.setAttribute("aria-label","删除这个时段");
-  remove.addEventListener("click",()=>{row.remove();numberRows();changed();});row.append(number,select,remove);return row;
+  remove.addEventListener("click",()=>{row.remove();numberRows();changed();});
+  actions.append(remove);
+  row.append(number,select,actions);
+  return row;
 }
-function numberRows() {const rows=[...$("time-rows").children];rows.forEach((row,i)=>{row.querySelector(".time-number").textContent=i+1;row.querySelector("select").setAttribute("aria-label",`第 ${i+1} 优先时段`);row.querySelector("button").disabled=rows.length===1||snapshot?.task?.active;});$("add-time").disabled=rows.length>=MAX_RUSH_TIME_SLOTS||snapshot?.task?.active;}
+function numberRows() {
+  const rows=[...$("time-rows").children];
+  const locked=requestBusy||Boolean(snapshot?.task?.active);
+  rows.forEach((row,index)=>{
+    const priority=`第 ${index+1} 优先时段`;
+    row.querySelector(".time-number").textContent=index+1;
+    row.querySelector("select").setAttribute("aria-label",priority);
+    const up=row.querySelector(".time-up"),down=row.querySelector(".time-down");
+    up.setAttribute("aria-label",`上移${priority}`);
+    down.setAttribute("aria-label",`下移${priority}`);
+    up.disabled=locked||index===0;
+    down.disabled=locked||index===rows.length-1;
+    row.querySelector(".remove-time").disabled=locked||rows.length===1;
+  });
+  $("add-time").disabled=locked||rows.length>=MAX_RUSH_TIME_SLOTS;
+}
 function updateCourts(preferred=f(rush,"court").value) {
   const venue=f(rush,"venue").value,scope=f(rush,"scope");
   scope.disabled=venue==="east"||Boolean(snapshot?.task?.active&&snapshot.task.mode==="rush");

@@ -57,10 +57,10 @@ class NormalizeRushUiStateTest(unittest.TestCase):
         self.assertEqual(state.huxiaoming_court_scope, HUXIAOMING_COURT_SCOPE_ALL)
         self.assertEqual(state.court, 7)
 
-    def test_court_outside_scope_falls_back_to_default_preferred(self) -> None:
+    def test_court_outside_scope_falls_back_to_first_allowed_court(self) -> None:
         state = normalize_rush_ui_state("huxiaoming", "只要室内场", "3")
         self.assertEqual(state.huxiaoming_court_scope, HUXIAOMING_COURT_SCOPE_INDOOR)
-        self.assertEqual(state.court, DEFAULT_RUSH_PREFERRED_COURT)
+        self.assertEqual(state.court, 6)
 
     def test_bogus_court_values_fall_back_instead_of_raising(self) -> None:
         for value in ("", "场地", "abc", "0", "9", None, True, 3.5):

@@ -26,7 +26,9 @@ const table=document.getElementById('grid');const head=table.insertRow();head.in
 for(let hour=7;hour<22;hour++){
  const row=table.insertRow();row.insertCell().textContent=`${String(hour).padStart(2,'0')}:00`;
  for(let court=1;court<=8;court++){
-  const cell=row.insertCell(),available=hour===19&&(court===6||fixture.multiple&&court===7);
+  const cell=row.insertCell(),available=fixture.rushSlots
+   ? fixture.rushSlots.some(slot=>slot.hour===hour&&slot.court===court)
+   : hour===19&&(court===6||fixture.multiple&&court===7);
   cell.className=available?'available':'unavailable';
   if(available)cell.onclick=()=>{document.querySelectorAll('td.selected').forEach(el=>el.className='available');cell.className='selected';selected={court:`场地${court}`,hour:`${String(hour).padStart(2,'0')}:00`};document.getElementById('selection').textContent=`${selectedDate} ${selected.court} ${selected.hour}-${String(hour+1).padStart(2,'0')}:00`;document.getElementById('order').disabled=false;record('select',selected);};
  }

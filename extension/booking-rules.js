@@ -29,14 +29,15 @@ globalThis.SJTU_BOOKING_RULES = {
   "rushAttemptWindowSeconds": 60,
   "maxRushTimeSlots": 7,
   "rushDefaults": {
-    "venue": "huxiaoming",
-    "scope": "indoor",
-    "court": 6,
+    "venue": "east",
+    "scope": "all",
+    "court": 4,
     "times": [
-      "19:00-20:00",
-      "20:00-21:00",
       "21:00-22:00",
-      "18:00-19:00"
+      "20:00-21:00",
+      "19:00-20:00",
+      "18:00-19:00",
+      "17:00-18:00"
     ]
   }
 };

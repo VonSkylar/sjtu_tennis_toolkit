@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {environment} from "./fake-browser.js";
-import {VENUES,SCHOOL} from "../rules.js";
+import {VENUES,SCHOOL,RUSH_DEFAULTS} from "../rules.js";
 test("监控恰好一个候选自动提交一次，成功后继续监控但不再提交",async()=>{
   const e=environment();await e.controller.start("monitor",e.monitor);await e.until(()=>e.controller.task.autoHalted);
   assert.equal(e.submits,1);assert.equal(e.controller.task.active,true);
@@ -25,7 +25,7 @@ test("提交后后台重建只查询结果，不重新提交",async()=>{
 test("抢场优先次序、一次成功停止且保存原绝对截止时间",async()=>{
   const e=environment();await e.controller.start("rush",e.rush);const deadline=e.controller.task.config.deadline;
   await e.until(()=>!e.controller.task.active);assert.equal(e.submits,1);assert.equal(e.controller.task.status,"success");assert.equal(e.controller.task.config.deadline,deadline);
-  assert.equal(e.controller.task.attempt.slot.court,"场地6");assert.equal(e.controller.task.attempt.slot.hour,"19:00");
+  assert.equal(e.controller.task.attempt.slot.court,"场地4");assert.equal(e.controller.task.attempt.slot.hour,"21:00");
 });
 test("重复频繁请求每次完整等待一秒，ready 事件不能缩短冷却",async()=>{
   const e=environment();e.frequent=2;await e.controller.start("rush",e.rush);
@@ -73,7 +73,9 @@ test("并发开始请求只有一个可以创建任务",async()=>{
   assert.equal(results.filter(x=>x.status==="fulfilled").length,1);assert.equal(results.filter(x=>x.status==="rejected").length,1);
 });
 test("抢场明确失败时严格按时段和场地优先级尝试",async()=>{
-  const e=environment();e.outcome="failure";await e.controller.start("rush",e.rush);await e.until(()=>!e.controller.task.active);
+  const e=environment();e.outcome="failure";
+  const config={...e.rush,venue:"huxiaoming",scope:"indoor",court:6,times:["19:00-20:00","20:00-21:00","21:00-22:00","18:00-19:00"]};
+  await e.controller.start("rush",config);await e.until(()=>!e.controller.task.active);
   const selections=e.trace.filter(x=>x.action==="select").map(x=>`${x.slot.hour}|${x.slot.court}`);
   assert.deepEqual(selections,["19:00|场地6","19:00|场地7","20:00|场地6","20:00|场地7","21:00|场地6","21:00|场地7","18:00|场地6","18:00|场地7"]);
   assert.equal(e.submits,8);assert.equal(e.controller.task.status,"failed");
@@ -90,14 +92,14 @@ test("人工验证未完成且超过截止时间时停止抢场",async()=>{
 });
 test("提交授权绑定当前页面和命令且只能使用一次",async()=>{
   const e=environment();await e.controller.start("rush",e.rush);await e.until(()=>e.controller.task.attempt?.stage==="submit");
-  const t=e.controller.task;t.attempt.stage="result";t.pending={action:"submit",tabId:t.tabs.huxiaoming,commandId:"submit1",documentId:"page1",authorized:false};
-  const sender={tab:{id:t.tabs.huxiaoming},frameId:0},message={runId:t.id,commandId:"submit1",documentId:"page1"};
+  const t=e.controller.task,tabId=t.tabs[e.rush.venue];t.attempt.stage="result";t.pending={action:"submit",tabId,commandId:"submit1",documentId:"page1",authorized:false};
+  const sender={tab:{id:tabId},frameId:0},message={runId:t.id,commandId:"submit1",documentId:"page1"};
   assert.deepEqual(await e.controller.authorize({...message,documentId:"old"},sender),{ok:false});
   assert.deepEqual(await e.controller.authorize(message,sender),{ok:true});assert.deepEqual(await e.controller.authorize(message,sender),{ok:false});
 });
 test("损坏的配置回退默认值，不阻止插件启动",async()=>{
   const e=environment();e.local.settings={monitor:{interval:"bad"},rush:{times:null}};await e.controller.init();
-  assert.equal(e.controller.settings.monitor.interval,20);assert.equal(e.controller.settings.rush.times.length,4);
+  assert.equal(e.controller.settings.monitor.interval,20);assert.deepEqual(e.controller.settings.rush,RUSH_DEFAULTS);
 });
 test("旧版过期默认范围自动迁移，开始时计算日期并固定本次任务范围",async()=>{
   const e=environment();
@@ -183,6 +185,6 @@ test("运行中跳回首页立即纠正，丢弃上轮候选而不误判日期�
 });
 test("订单提交后的结果页不会被纠正回场馆或再次提交",async()=>{
   const e=environment();await e.controller.start("rush",e.rush);await e.until(()=>e.submits===1);
-  const t=e.controller.task,id=t.tabs.huxiaoming,url=SCHOOL+"/pc/#/orderDetails/1";e.tabs.get(id).url=url;
+  const t=e.controller.task,id=t.tabs[e.rush.venue],url=SCHOOL+"/pc/#/orderDetails/1";e.tabs.get(id).url=url;
   await e.until(()=>!t.active);assert.equal(t.status,"success");assert.equal(e.tabs.get(id).url,url);assert.equal(e.submits,1);
 });

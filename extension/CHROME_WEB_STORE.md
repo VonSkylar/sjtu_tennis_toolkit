@@ -3,7 +3,7 @@
 ## 首次提交
 
 1. 用你选定的 Google 账号打开 [Chrome 商店开发者后台](https://chrome.google.com/webstore/devconsole/)。若尚未注册，阅读开发者条款、支付一次性注册费，验证联系邮箱，并启用 Google 两步验证。请在自己的浏览器完成这些步骤。
-2. 新建项目并上传 `sjtu-tennis-extension-1.0.6-chrome-web-store.zip`。商店资料填写下方文案，并上传图标和截图。若拿到的是提交资料合集，先解压合集，再上传里面的扩展 ZIP。仓库本地生成的扩展 ZIP 在 `dist/`，图片在 `dist/chrome-web-store/`。申请审核前在 **分发 → 可见性** 选择 **Public（公开）**，保持免费。
+2. 新建项目并上传 `sjtu-tennis-extension-1.0.7-chrome-web-store.zip`。商店资料填写下方文案，并上传图标和截图。若拿到的是提交资料合集，先解压合集，再上传里面的扩展 ZIP。仓库本地生成的扩展 ZIP 在 `dist/`，图片在 `dist/chrome-web-store/`。申请审核前在 **分发 → 可见性** 选择 **Public（公开）**，保持免费。
 3. 提交审核。审核通过并发布后，在 Windows 和 Mac 用 Chrome 打开该项目的商店链接安装。原来加载了开发版的 Chrome，先停止任务、记下配置并停用开发版，再使用商店版。
 
 官方说明：[开发者注册](https://developer.chrome.com/docs/webstore/register) · [分发设置](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution) · [提交审核](https://developer.chrome.com/docs/webstore/publish)

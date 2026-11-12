@@ -34,10 +34,11 @@ test("场地范围与场地优先级",()=>{
   assert.equal(allowedCourts("east","indoor").length,8);assert.deepEqual(courtOrder("huxiaoming","indoor",7),[7,6]);
   assert.throws(()=>courtOrder("huxiaoming","indoor",1));assert.throws(()=>allowedCourts("missing"));
 });
-test("抢场完整保留四个时段、默认值及当日一分钟窗口",()=>{
+test("抢场默认东区 4 号场、五个时段及当日一分钟窗口",()=>{
   const now=at("2026-10-31T10:00:00"),c=validateConfig("rush",RUSH_DEFAULTS,now);
   assert.equal(c.targetDate,"2026-11-07");assert.equal(c.releaseAt,at("2026-10-31T12:00:00"));assert.equal(c.deadline-c.releaseAt,60000);
-  assert.deepEqual(c.times,RUSH_DEFAULTS.times);assert.equal(c.court,6);
+  assert.equal(c.venue,"east");assert.equal(c.scope,"all");assert.equal(c.court,4);
+  assert.deepEqual(c.times,["21:00-22:00","20:00-21:00","19:00-20:00","18:00-19:00","17:00-18:00"]);
   assert.throws(()=>validateConfig("rush",{...RUSH_DEFAULTS,times:["19:00-20:00","19:00-20:00"]},now));
   assert.throws(()=>validateConfig("rush",{...RUSH_DEFAULTS,times:Array(8).fill("19:00-20:00")},now));
   assert.throws(()=>validateConfig("rush",{...RUSH_DEFAULTS,releaseTime:"25:00:00"},now));

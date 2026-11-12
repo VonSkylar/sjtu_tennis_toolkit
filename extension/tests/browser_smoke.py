@@ -99,8 +99,30 @@ def run():
             checked(f"sidepanel {width}px has no horizontal overflow", panel.evaluate("document.documentElement.scrollWidth <= innerWidth"))
             panel.screenshot(path=str(OUT / f"monitor-{width}.png"), full_page=True)
         panel.click("#mode-rush")
-        checked("four default priority rows", panel.locator(".time-row").count() == 4)
+        default_times = ["21:00-22:00", "20:00-21:00", "19:00-20:00", "18:00-19:00", "17:00-18:00"]
+        time_selectors = "#time-rows select"
+        checked("five default priority rows in the requested order", panel.locator(time_selectors).evaluate_all("rows => rows.map(row => row.value)") == default_times)
+        checked("default East court 4 and noon release",
+                panel.input_value('#rush-form [name=venue]') == "east"
+                and panel.input_value('#rush-form [name=scope]') == "all"
+                and panel.input_value('#rush-form [name=court]') == "4"
+                and panel.input_value('#rush-form [name=releaseTime]') in ("12:00", "12:00:00"))
         panel.screenshot(path=str(OUT / "rush-520.png"), full_page=True)
+        panel.set_viewport_size({"width": 320, "height": 1100})
+        checked("rush priority controls fit a 320px sidepanel", panel.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+        checked("first row cannot move up and last row cannot move down",
+                panel.locator(".time-up").first.is_disabled() and panel.locator(".time-down").last.is_disabled())
+        panel.locator(".time-up").nth(1).click()
+        panel.locator(".time-down").nth(2).click()
+        reordered_times = [default_times[i] for i in (1, 0, 3, 2, 4)]
+        checked("up and down move rows and keep priority numbers in order",
+                panel.locator(time_selectors).evaluate_all("rows => rows.map(row => row.value)") == reordered_times
+                and panel.locator(".time-number").all_text_contents() == ["1", "2", "3", "4", "5"])
+        wait_for(lambda s: s["settings"]["rush"]["times"] == reordered_times)
+        panel.reload()
+        panel.wait_for_function("times => Array.from(document.querySelectorAll('#time-rows select'), row => row.value).join(',') === times.join(',')", arg=reordered_times)
+        checked("reordered priorities are restored when the sidepanel reloads", True)
+        panel.set_viewport_size({"width": 520, "height": 1100})
         panel.click("#mode-monitor")
         # Pre-attach the fixture tab so Playwright intercepts its first navigation
         # as well as subsequent extension-driven reloads.
@@ -197,15 +219,26 @@ def run():
         east.close();stopped=wait_for(lambda s:not s["task"]["active"])
         checked("closing a managed venue tab stops the job", "标签页已关闭" in stopped["task"]["message"])
         # Exercise timed rush with the real wall clock, reload, date discovery and result.
-        config["outcome"] = "success";school.reload();events.clear()
+        config.update(outcome="success", rushSlots=[{"hour": 20, "court": 4}, {"hour": 21, "court": 4}])
+        east = context.new_page()
+        east.goto(panel.evaluate("async () => (await import('./rules.js')).VENUES.east.url"))
+        events.clear()
+        panel.click("#mode-rush")
         rush = state()["settings"]["rush"]
         rush["releaseTime"] = panel.evaluate("async()=>{const r=await import('./rules.js');return r.chinaTime(Date.now()+4000)}")
         send("START", mode="rush", config=rush)
+        panel.wait_for_function("() => Array.from(document.querySelectorAll('.move-time')).every(button => button.disabled)")
+        checked("priority buttons are disabled while the rush is active", True)
         result = wait_for(lambda s: not s["task"]["active"], timeout=30)
         checked("timed rush succeeds through real extension", result["task"]["status"] == "success")
-        checked("rush used first priority court and time", any(e["action"] == "submit" and e["court"] == "场地6" and e["hour"] == "19:00" for e in events))
+        checked("rush used court 4 and the moved first priority over another available time",
+                [(e["court"], e["hour"]) for e in events if e["action"] == "submit"] == [("场地4", "20:00")])
         send("STOP_ALARM")
+        panel.click("#reset")
+        wait_for(lambda s: s["settings"]["rush"]["times"] == default_times)
+        checked("restoring rush defaults resets the saved priority order", True)
         # The real content agent recognizes the daily limit and persists cooldown.
+        config.pop("rushSlots")
         config["daily"]=True;school.reload();events.clear()
         send("START",mode="monitor",config=raw)
         limited=wait_for(lambda s:s["task"]["status"]=="limited")
